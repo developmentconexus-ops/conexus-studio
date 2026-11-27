@@ -16,20 +16,14 @@ export function isPlanFilePath(path: string): boolean {
   return posix.extname(absolute).toLowerCase() === '.md' && posix.dirname(absolute) === PLANS_DIR;
 }
 
-const PLAN_MODE_TOOLS = [
+export const PLAN_MODE_WORKSPACE_TOOLS: ReadonlySet<string> = new Set([
   WORKSPACE_TOOLS.FILESYSTEM.READ_FILE,
   WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES,
   WORKSPACE_TOOLS.FILESYSTEM.FILE_STAT,
   WORKSPACE_TOOLS.FILESYSTEM.GREP,
   WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE,
   WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE,
-  'ask_user',
-  'submit_plan',
-  'task_write',
-  'task_update',
-  'task_complete',
-  'task_check',
-];
+]);
 
 const planMode: AgentControllerMode = {
   id: PLAN_MODE_ID,
@@ -37,7 +31,6 @@ const planMode: AgentControllerMode = {
   description: 'Reads, asks questions and writes the plan. Never writes app code or runs commands.',
   defaultModelId: MODEL_ID,
   transitionsTo: BUILD_MODE_ID,
-  availableTools: PLAN_MODE_TOOLS,
   instructions: `You are in PLAN mode.
 
 - You can read, search and ask the user questions. You cannot run commands and you cannot write app code.
