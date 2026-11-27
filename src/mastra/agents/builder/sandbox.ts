@@ -24,7 +24,7 @@ function readController(requestContext: unknown) {
   return parsed.success ? parsed.data : undefined;
 }
 
-function planModeGuard({ workspaceToolName, input, context }: WorkspaceToolHookContext) {
+export function planModeGuard({ workspaceToolName, input, context }: WorkspaceToolHookContext) {
   const requestContext = typeof context === 'object' && context !== null && 'requestContext' in context ? context.requestContext : undefined;
   if (readController(requestContext)?.session.modeId !== PLAN_MODE_ID) return;
 
