@@ -1,6 +1,6 @@
 import { AgentController } from '@mastra/core/agent-controller';
 import { createCodingAgent } from '@mastra/core/coding-agent';
-import { instructions } from './instructions.js';
+import { instructions } from './prompt.js';
 import { memory } from './memory.js';
 import { MODEL_ID, BUILD_MODE_ID, modes } from './modes.js';
 import { conversationWorkspace } from './sandbox.js';
