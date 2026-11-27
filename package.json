@@ -15,6 +15,7 @@
     "@mastra/core": "1.86.0",
     "@mastra/e2b": "0.18.1",
     "@mastra/memory": "1.41.3",
+    "@mastra/observability": "1.24.3",
     "@mastra/pg": "1.38.0",
     "zod": "4.6.7"
   },
