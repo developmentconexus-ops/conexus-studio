@@ -57,7 +57,10 @@ function createConversationWorkspace(conversationId: string): Workspace {
     id: `conexus-studio-${conversationId}`,
     filesystem: sandbox.filesystem,
     sandbox,
-    tools: { hooks: { beforeToolCall: planModeGuard } },
+    tools: {
+      hooks: { beforeToolCall: planModeGuard },
+      [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: { backgroundProcesses: { abortSignal: null } },
+    },
   });
 }
 
