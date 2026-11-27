@@ -2,7 +2,7 @@ import { E2BSandbox } from '@mastra/e2b';
 import { Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { WorkspaceToolHookContext } from '@mastra/core/workspace';
 import { z } from 'zod';
-import { PLAN_MODE_ID, PLAN_MODE_WORKSPACE_TOOLS, PLANS_DIR, isPlanFilePath } from './modes.js';
+import { PLAN_MODE_ID, PLANS_DIR, isPlanFilePath } from './modes.js';
 
 const STUDIO_TEST_CONVERSATION = 'studio-test';
 const SANDBOX_TIMEOUT_MS = 30 * 60 * 1000;
@@ -24,18 +24,14 @@ function readController(requestContext: unknown) {
   return parsed.success ? parsed.data : undefined;
 }
 
-export function planModeGuard({ workspaceToolName, input, context }: WorkspaceToolHookContext) {
-  const requestContext = typeof context === 'object' && context !== null && 'requestContext' in context ? context.requestContext : undefined;
-  if (readController(requestContext)?.session.modeId !== PLAN_MODE_ID) return;
-
-  if (!PLAN_MODE_WORKSPACE_TOOLS.has(workspaceToolName)) {
-    return { proceed: false as const, output: 'Plan mode is read-only. Switch to build mode to run commands or change files.' };
-  }
-
+export function planFileWriteGuard({ workspaceToolName, input, context }: WorkspaceToolHookContext) {
   const isWrite =
     workspaceToolName === WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE ||
     workspaceToolName === WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE;
   if (!isWrite) return;
+
+  const requestContext = typeof context === 'object' && context !== null && 'requestContext' in context ? context.requestContext : undefined;
+  if (readController(requestContext)?.session.modeId !== PLAN_MODE_ID) return;
 
   const parsedInput = z.object({ path: z.string() }).safeParse(input);
   if (parsedInput.success && isPlanFilePath(parsedInput.data.path)) return;
@@ -58,7 +54,7 @@ function createConversationWorkspace(conversationId: string): Workspace {
     filesystem: sandbox.filesystem,
     sandbox,
     tools: {
-      hooks: { beforeToolCall: planModeGuard },
+      hooks: { beforeToolCall: planFileWriteGuard },
       [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: { backgroundProcesses: { abortSignal: null } },
     },
   });

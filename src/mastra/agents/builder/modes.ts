@@ -16,14 +16,20 @@ export function isPlanFilePath(path: string): boolean {
   return posix.extname(absolute).toLowerCase() === '.md' && posix.dirname(absolute) === PLANS_DIR;
 }
 
-export const PLAN_MODE_WORKSPACE_TOOLS: ReadonlySet<string> = new Set([
+export const PLAN_MODE_AVAILABLE_TOOLS = [
   WORKSPACE_TOOLS.FILESYSTEM.READ_FILE,
   WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES,
   WORKSPACE_TOOLS.FILESYSTEM.FILE_STAT,
   WORKSPACE_TOOLS.FILESYSTEM.GREP,
   WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE,
   WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE,
-]);
+  'ask_user',
+  'submit_plan',
+  'task_write',
+  'task_update',
+  'task_complete',
+  'task_check',
+];
 
 const planMode: AgentControllerMode = {
   id: PLAN_MODE_ID,
@@ -40,6 +46,7 @@ const planMode: AgentControllerMode = {
 - Then call submit_plan with that path. Never paste the plan body in chat.
 - If the user asks for changes, edit the same file and call submit_plan again.`,
   metadata: { default: false },
+  availableTools: PLAN_MODE_AVAILABLE_TOOLS,
 };
 
 const buildMode: AgentControllerMode = {
