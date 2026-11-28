@@ -7,5 +7,4 @@ export type {
   HarnessMastraArgs,
   HarnessModels,
   HarnessTools,
-  ModelId,
 } from './mastra/config.js';

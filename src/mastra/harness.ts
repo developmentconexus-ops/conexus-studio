@@ -1,14 +1,15 @@
 import type { Agent } from '@mastra/core/agent';
 import type { AgentController } from '@mastra/core/agent-controller';
 import type { Workspace } from '@mastra/core/workspace';
-import type { ConexusHarnessConfig, HarnessMastraArgs, ModelId } from './config.js';
+import type { MastraModelConfig } from '@mastra/core/llm';
+import type { ConexusHarnessConfig, HarnessMastraArgs } from './config.js';
 import { createBuilder } from './agents/builder/controller.js';
 import { createBuilderMemory } from './agents/builder/memory.js';
 import { createBuilderWorkspace } from './agents/builder/workspace.js';
 import { AppSandboxes } from './sandboxes.js';
 
-const DEFAULT_BUILDER_MODEL: ModelId = 'anthropic/claude-sonnet-5-5';
-const DEFAULT_MEMORY_MODEL: ModelId = 'anthropic/claude-haiku-5-5';
+const DEFAULT_BUILDER_MODEL: MastraModelConfig = 'anthropic/claude-sonnet-5-5';
+const DEFAULT_MEMORY_MODEL: MastraModelConfig = 'anthropic/claude-haiku-5-5';
 const DEFAULT_PLANS_DIR = '.conexus/plans';
 
 interface Prepared {

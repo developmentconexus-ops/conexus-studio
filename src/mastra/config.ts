@@ -1,4 +1,5 @@
 import type { ToolsInput } from '@mastra/core/agent';
+import type { MastraModelConfig } from '@mastra/core/llm';
 import type { Mastra } from '@mastra/core/mastra';
 import type { RequestContext } from '@mastra/core/request-context';
 import type { IMastraAuthProvider } from '@mastra/core/server';
@@ -6,9 +7,6 @@ import type { WorkspaceFilesystem, WorkspaceSandbox } from '@mastra/core/workspa
 
 /** Chave do RequestContext com o app da requisição. O host põe; o pacote só lê. */
 export const HARNESS_APP_ID_KEY = 'conexus-harness.appId';
-
-/** Id de modelo do gateway do Mastra, como "anthropic/claude-sonnet-5-5". */
-export type ModelId = `${string}/${string}`;
 
 /** A máquina de um app: o sandbox e o disco dele. O pacote não importa nenhum provedor. */
 export interface AppMachine {
@@ -25,10 +23,10 @@ export type HarnessTools =
   | ((args: { requestContext: RequestContext }) => ToolsInput | Promise<ToolsInput>);
 
 export interface HarnessModels {
-  /** Padrão: "anthropic/claude-sonnet-5-5". */
-  builder?: ModelId;
-  /** Padrão: "anthropic/claude-haiku-5-5". */
-  memory?: ModelId;
+  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-sonnet-5-5". */
+  builder?: MastraModelConfig;
+  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-haiku-5-5". */
+  memory?: MastraModelConfig;
 }
 
 export interface ConexusHarnessConfig {

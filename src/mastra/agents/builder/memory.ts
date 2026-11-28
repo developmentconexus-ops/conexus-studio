@@ -1,7 +1,7 @@
 import { Memory } from '@mastra/memory';
-import type { ModelId } from '../../config.js';
+import type { MastraModelConfig } from '@mastra/core/llm';
 
-export function createBuilderMemory(model: ModelId): Memory {
+export function createBuilderMemory(model: MastraModelConfig): Memory {
   return new Memory({
     options: {
       observationalMemory: {
