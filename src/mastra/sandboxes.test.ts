@@ -1,34 +1,23 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { RequestContext } from '@mastra/core/request-context';
-import { LocalFilesystem, LocalSandbox } from '@mastra/core/workspace';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { HARNESS_APP_ID_KEY } from './config.js';
-import type { AppMachine } from './config.js';
 import { AppSandboxes, appIdFrom } from './sandboxes.js';
+import { createLocalMachines } from './testing/local-machines.js';
+import type { LocalMachines } from './testing/local-machines.js';
 
-let root: string;
+let machines: LocalMachines;
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'harness-sandboxes-'));
+  machines = await createLocalMachines();
 });
 
 afterAll(async () => {
-  await rm(root, { recursive: true, force: true });
+  await machines.dispose();
 });
 
 function localFactory() {
-  const created: string[] = [];
-  const factory = ({ appId }: { appId: string }): AppMachine => {
-    created.push(appId);
-    const basePath = join(root, appId);
-    return {
-      sandbox: new LocalSandbox({ id: `sandbox-${appId}`, workingDirectory: basePath }),
-      filesystem: new LocalFilesystem({ id: `fs-${appId}`, basePath }),
-    };
-  };
-  return { factory, created };
+  machines.created.length = 0;
+  return { factory: machines.factory, created: machines.created };
 }
 
 describe('AppSandboxes', () => {
