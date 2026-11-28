@@ -98,8 +98,8 @@ describe('createBuilder', () => {
 });
 
 describe('createBuilder in a controller session', () => {
-  async function toolsSeenByTheModel(modeId: string): Promise<string[]> {
-    let streamOptions: { tools?: { name: string }[] } | undefined;
+  async function streamOptionsSeenByTheModel(modeId: string) {
+    let streamOptions: { tools?: { name: string }[]; providerOptions?: Record<string, unknown> } | undefined;
     const model = createMockModel({
       mockText: 'ok',
       version: 'v2',
@@ -121,8 +121,20 @@ describe('createBuilder in a controller session', () => {
 
     await session.sendMessage({ content: 'hello', requestContext });
 
-    return (streamOptions?.tools ?? []).map((tool) => tool.name);
+    return streamOptions;
   }
+
+  async function toolsSeenByTheModel(modeId: string): Promise<string[]> {
+    return ((await streamOptionsSeenByTheModel(modeId))?.tools ?? []).map((tool) => tool.name);
+  }
+
+  it.each(['plan', 'build'])('asks Anthropic to drop thinking blocks bound to another tools list in %s mode', async (modeId) => {
+    const options = await streamOptionsSeenByTheModel(modeId);
+
+    expect(options?.providerOptions).toMatchObject({
+      anthropic: { thinking: { type: 'adaptive', blockBinding: { prefixMismatchBehavior: 'drop_block' } } },
+    });
+  });
 
   it('shows the model each tool once in build mode, with the workspace, skill and host tools', async () => {
     const names = await toolsSeenByTheModel('build');

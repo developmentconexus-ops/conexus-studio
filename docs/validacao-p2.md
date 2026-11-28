@@ -97,8 +97,45 @@ rodada em `build` reenvia o bloco com 24. É o `availableTools` por modo (compor
 com o histórico que repete o bloco assinado. No chat do Studio não há troca de modo, a lista de ferramentas não muda e
 a aprovação não deu erro.
 
-Registrado como bug do Mastra, **sem contorno** (decisão de 2026-11-27). Não enviei nada ao time do Mastra, porque a
-tarefa não autoriza chamada a serviço externo. Quem decidir pode usar esta seção como texto do relato.
+Registrado como bug do Mastra (decisão de 2026-11-27, sem contorno na época). Não enviei nada ao time do Mastra, porque a tarefa não
+autoriza chamada a serviço externo. Quem decidir pode usar esta seção como texto do relato.
+
+### A correção e a prova (2026-11-28)
+
+A causa tem três partes nativas: o Sonnet 5.5 gera thinking assinado mesmo sem configuração; o `availableTools` do modo
+vira `activeTools` e muda o array `tools` enviado (17 em `plan`, 23 em `build` neste teste); a aprovação do
+`submit_plan` retoma a mesma run e reenvia o bloco assinado. A correção é a opção nativa do provedor, em
+`defaultOptions` do `createCodingAgent`:
+`providerOptions.anthropic.thinking = { type: 'adaptive', blockBinding: { prefixMismatchBehavior: 'drop_block' } }`. O
+provedor acrescenta sozinho o beta `thinking-binding-controls-2026-08-01`. Os modos não mudaram.
+
+**A forma sem `type` não serve.** Com `{ blockBinding: ... }` só, o corpo saiu `thinking: { block_binding: ... }` e a
+Anthropic respondeu 400 `thinking.type: Field required` (`req_011ChUnJj9B3se6fVxjPDmyj`, sem custo). Por isso a opção
+leva `type: 'adaptive'`.
+
+Prova paga, uma máquina local (sem E2B), `anthropic/claude-sonnet-5-5`, plano que exige raciocínio, `submit_plan`
+aprovado, depois o build. Controller usado direto, com as mesmas chamadas das rotas nativas (`sendMessage` e
+`respondToToolSuspension`).
+
+| Rodada | Pedido 1 (plan, 17 ferr.) | Pedido 2 (plan, 17 ferr., 1 bloco de thinking) | Pedido 3 (primeiro do build, 23 ferr., 1 bloco) |
+|--------|---------------------------|-----------------------------------------------|-------------------------------------------------|
+| Sem a opção | 200 `req_011ChUnNGrz6aKTsqeNbPyCV` | 200 `req_011ChUnPjNSuvxQWUUBqnY2a` | **400** `req_011ChUnPq326PyyFHKGrPKgM`, o mesmo erro do bloco ligado à lista de ferramentas; o retry também: `req_011ChUnPzeDXpPbfFKQx9i2v` |
+| Com a opção | 200 `req_011ChUnQXFxafpQztFNFfKtx` | 200 `req_011ChUnRn9wAGKNYSChSvxzn` | **200** `req_011ChUnRrJUdFYJ6cgdnrYmf`; o agente seguiu e criou o app (pedido 4, 200, `req_011ChUnTiBddrJ8bwjN2NoW3`) |
+
+Com a opção, os quatro pedidos saíram com `anthropic-beta: thinking-binding-controls-2026-08-01` e
+`thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } }`. Sem a opção, nenhum dos dois
+saiu. Uso com a opção: 57,5 mil tokens de entrada, 7,5 mil de saída (858 de raciocínio) em 4 pedidos. Sem a opção, até o
+400: 24,4 mil de entrada, 2,6 mil de saída.
+
+Um roteiro mais simples (plano de uma linha) não reproduz o erro nem sem a opção: o modelo não pensou nos passos do
+`plan`, e não havia bloco assinado para invalidar (`req_011ChUnLk6Gwqo6NaHMAxMHc` a `req_011ChUnMDqe6Qj1XMsKbSv5d`, todos
+200 sem a opção; com a opção, `req_011ChUnKULDUAoxU3bp6Qvss` a `req_011ChUnKtARDe9t63VeRswvk`, todos 200). A prova vale
+só quando o plan gera thinking.
+
+Custo da prova inteira (quatro rodadas completas mais a tentativa sem `type`): cerca de 179 mil tokens de entrada e
+11,6 mil de saída em Sonnet 5.5, mais um pouco de Haiku da memória. Não medi o preço em dólar; a US$ 3 por milhão de
+entrada e US$ 15 por milhão de saída (preço de tabela presumido, sem cache) dá no máximo cerca de US$ 0,71, abaixo do
+teto de US$ 1.
 
 ## Custo
 

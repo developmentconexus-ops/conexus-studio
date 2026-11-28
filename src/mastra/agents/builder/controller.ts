@@ -30,7 +30,10 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
     tools: builderTools(deps.tools),
     memory: deps.memory,
     workspace: deps.workspace,
-    defaultOptions: { maxSteps: MAX_STEPS },
+    defaultOptions: {
+      maxSteps: MAX_STEPS,
+      providerOptions: { anthropic: { thinking: { type: 'adaptive', blockBinding: { prefixMismatchBehavior: 'drop_block' } } } },
+    },
   });
   const controller = new AgentController({
     id: BUILDER_ID,
