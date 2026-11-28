@@ -13,7 +13,6 @@ import {
 import type { HarnessTools } from '../../../config.js';
 import { previewUrlTool } from './preview-url.js';
 
-/** Ferramentas que o controller injeta nas sessões dele e que o chat do Studio também precisa. */
 export const CONTROLLER_BUILTIN_TOOL_IDS = [
   'ask_user',
   'submit_plan',
@@ -35,7 +34,6 @@ const ownTools: ToolsInput = {
   preview_url: previewUrlTool,
 };
 
-/** As ferramentas do agente: nativas + preview_url + as do host. */
 export function builderTools(
   hostTools: HarnessTools | undefined,
 ): (args: { requestContext: RequestContext }) => Promise<ToolsInput> {

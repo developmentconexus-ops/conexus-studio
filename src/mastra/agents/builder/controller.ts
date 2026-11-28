@@ -20,7 +20,6 @@ export interface BuilderDeps {
   plansDir: string;
 }
 
-/** Monta o Construtor. Nada é criado no import. */
 export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: AgentController } {
   const agent = createCodingAgent({
     id: BUILDER_ID,

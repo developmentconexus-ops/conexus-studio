@@ -12,7 +12,6 @@ export interface LocalMachines {
   dispose: () => Promise<void>;
 }
 
-/** Um disco local que trata "/x" como "<basePath>/x", como o disco da E2B trata caminhos absolutos a partir da raiz da máquina. */
 function rootedAt(basePath: string): WorkspaceFilesystem {
   const filesystem = new LocalFilesystem({ id: `fs-${basePath}`, basePath });
   return new Proxy(filesystem, {
@@ -25,7 +24,6 @@ function rootedAt(basePath: string): WorkspaceFilesystem {
   });
 }
 
-/** Máquinas de teste sem custo: LocalSandbox e LocalFilesystem numa pasta temporária, uma subpasta por app. */
 export async function createLocalMachines(): Promise<LocalMachines> {
   const root = await mkdtemp(join(tmpdir(), 'harness-machines-'));
   const created: string[] = [];
