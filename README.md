@@ -53,12 +53,13 @@ new ConexusHarness({
   model: {
     defaultFor: async ({ resourceId, sessionId }) => modeloInicialDe(resourceId),
     resolve: async (modelId, { resourceId, requestContext }) => ({ id: modelId, apiKey: await chaveDe(resourceId, modelId) }),
+    // ou, para girar entre contas, uma lista ModelWithRetries[] (veja "Várias contas, em ordem")
     memoryFor: async ({ resourceId }) => ({ observer: modeloDaMemoriaDe(resourceId), reflector: modeloDaMemoriaDe(resourceId) }),
   },
 });
 ```
 
-- **O host.** `defaultFor` diz o modelo de uma conversa nova. `resolve` junta o id com a credencial e recusa um id não
+- **O host.** `defaultFor` diz o modelo de uma conversa nova. `resolve` junta o id com a credencial (um modelo ou uma lista de contas) e recusa um id não
   permitido, lançando erro. `memoryFor` diz os modelos da memória do dono. Sem elas: Sonnet 5.5 no Construtor, Haiku 5.5
   na memória, e o id vai direto ao roteador do Mastra, com a chave do ambiente.
 - **O Studio.** Não passa nada. Ele recebe Sonnet 5.5, Haiku 5.5 e a chave do ambiente.
@@ -68,6 +69,32 @@ new ConexusHarness({
   gravado (`onSessionCreated` bloqueante e `session.model.switch`). Se o padrão da empresa mudar, as conversas antigas
   não mudam. A retomada com escolha gravada não é tocada.
 - **A troca vale no turno seguinte.** Pela rota nativa ou por `session.model.switch`.
+- **Várias contas, em ordem.** `resolve` pode devolver uma lista, o tipo nativo `ModelWithRetries[]` do Agent
+  (`HarnessModel` é `MastraModelConfig | ModelWithRetries[]`). O pacote entrega a lista ao Agent sem mudar, e o Agent
+  tenta as entradas na ordem: se a primeira falha, a seguinte serve. O mesmo vale para observer e reflector, que passam
+  pelo mesmo `resolve`.
+
+  ```ts
+  resolve: async (modelId, { resourceId }) =>
+    (await contasDe(resourceId, modelId)).map((conta) => ({
+      id: `${modelId}:${conta.id}`,
+      model: modeloDa(conta),
+      maxRetries: 0,
+    })),
+  ```
+
+  O que o Mastra pede de cada entrada, conferido no código do `@mastra/core` 1.86.0:
+  - `id` único em cada entrada. Duas contas do mesmo modelo têm o mesmo `modelId`, e o Agent acha a entrada ativa pelo
+    `id`. Com ids repetidos, o passo seguinte do agente volta a tentar a primeira conta.
+  - Entrada barata de montar. O Agent resolve todas as entradas (modelo, `headers`, `modelSettings`, `providerOptions`)
+    antes de tentar a primeira. Então `modeloDa(conta)` não deve abrir a credencial de contas que talvez nem sejam
+    usadas: o host monta cada modelo para ler a credencial só ao enviar.
+  - Lista não vazia, com modelos v2 ou v3. Lista vazia lança erro, e modelo v1 não entra em lista.
+  - `maxRetries` da entrada vale `0` quando omitido. Ele não cobre o retry de erro do Agent: o Construtor nasce de
+    `createCodingAgent`, que repete um erro com `isRetryable` (como um 429) até 2 vezes na mesma entrada, com 3 s entre
+    as tentativas e respeitando `Retry-After` (até 30 s), antes de passar à seguinte. O pacote não muda isso.
+  - Erro ao abrir o stream, ou stream que cai, passa à entrada seguinte. Um chunk `error` que o provedor manda no meio
+    do stream chega ao chamador sem trocar de entrada (medido com modelos de teste).
 - **Id recusado não roda.** `resolve` é a autoridade da lista permitida. Se ela lança erro, o turno falha com esse mesmo
   erro, e nada cai em outro modelo. Se `defaultFor` falhar, a conversa fica sem modelo e o primeiro turno falha. O host
   pode conferir `session.model.hasSelection()` depois do `createSession`.

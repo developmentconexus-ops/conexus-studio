@@ -6,6 +6,7 @@ export type {
   ConversationOwner,
   ConexusHarnessConfig,
   HarnessMastraArgs,
+  HarnessModel,
   HarnessModels,
   HarnessTools,
   MemoryModels,
