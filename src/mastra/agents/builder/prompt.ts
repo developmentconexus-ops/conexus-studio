@@ -35,12 +35,13 @@ Before considering any task complete:
 - Run relevant tests (check package.json for test scripts). Write a small automated test for the app's core logic if there is none.
 - For TypeScript, run \`tsc --noEmit\` to catch type errors
 - Confirm the result makes sense and improves the requested behavior
+- Before giving the link, test the app in the browser with the testar-app skill.
 - Use available task-checking tools to ensure all tracked tasks are done
 
 **Don't mark something as done until you've verified and proved it actually works.**
 
 ## Showing the app
-To let the user see the app running, start the dev server in the background with execute_command (background: true, no timeout) listening on 0.0.0.0, for example "npm run dev -- --host 0.0.0.0 --port 5173". Vite blocks unknown hosts, so set server.host to true and server.allowedHosts to true in vite.config. Then call preview_url with that port and put the returned url in your answer. Give the url only when preview_url says the app is reachable.
+To let the user see the app running, start the dev server in the background with execute_command (background: true, no timeout) listening on 0.0.0.0, for example "npm run dev -- --host 0.0.0.0 --port 5173". Vite blocks unknown hosts, so set server.host to true and server.allowedHosts to true in vite.config. Then call preview_url with that port and put the returned url in your answer. Check the url with web_fetch before giving it.
 
 ## Error Recovery
 When something breaks, read the full error output, find the root cause, fix it properly, and run again. If progress is blocked after reasonable attempts, briefly explain the blocker, what you tried, and the next best option.

@@ -1,6 +1,17 @@
 import type { ToolsInput } from '@mastra/core/agent';
 import type { RequestContext } from '@mastra/core/request-context';
+import {
+  askUserTool,
+  submitPlanTool,
+  taskCheckTool,
+  taskCompleteTool,
+  taskUpdateTool,
+  taskWriteTool,
+  webFetchTool,
+  webSearchTool,
+} from '@mastra/core/tools';
 import type { HarnessTools } from '../../../config.js';
+import { previewUrlTool } from './preview-url.js';
 
 /** Ferramentas que o controller injeta nas sessões dele e que o chat do Studio também precisa. */
 export const CONTROLLER_BUILTIN_TOOL_IDS = [
@@ -12,9 +23,29 @@ export const CONTROLLER_BUILTIN_TOOL_IDS = [
   'task_check',
 ] as const;
 
+const ownTools: ToolsInput = {
+  ask_user: askUserTool,
+  submit_plan: submitPlanTool,
+  task_write: taskWriteTool,
+  task_update: taskUpdateTool,
+  task_complete: taskCompleteTool,
+  task_check: taskCheckTool,
+  web_search: webSearchTool,
+  web_fetch: webFetchTool,
+  preview_url: previewUrlTool,
+};
+
 /** As ferramentas do agente: nativas + preview_url + as do host. */
 export function builderTools(
   hostTools: HarnessTools | undefined,
 ): (args: { requestContext: RequestContext }) => Promise<ToolsInput> {
-  throw new Error('not implemented');
+  return async ({ requestContext }) => {
+    const host = typeof hostTools === 'function' ? await hostTools({ requestContext }) : (hostTools ?? {});
+    const tools: ToolsInput = { ...ownTools };
+    for (const [name, tool] of Object.entries(host)) {
+      if (name in tools) throw new Error(`The host tool "${name}" would replace a tool the Builder already has.`);
+      tools[name] = tool;
+    }
+    return tools;
+  };
 }
