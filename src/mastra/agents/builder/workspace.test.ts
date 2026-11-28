@@ -1,7 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RequestContext } from '@mastra/core/request-context';
+import { Template } from 'e2b';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { builderTemplate } from '../../../../e2b/builder-template.ts';
 import { HARNESS_APP_ID_KEY } from '../../config.js';
 import { AppSandboxes } from '../../sandboxes.js';
 import { createLocalMachines } from '../../testing/local-machines.js';
@@ -79,5 +81,13 @@ describe('createBuilderWorkspace', () => {
     const scoped = await workspace.skills?.getScoped?.({ requestContext: contextFor('stranger') });
 
     expect(await scoped?.list()).toEqual([]);
+  });
+});
+
+describe('E2B builder template', () => {
+  it('copies the testar-app skill to the directory the workspace reads skills from', async () => {
+    const { steps } = JSON.parse(await Template.toJSON(builderTemplate));
+    const copySkills = steps.find((step: { type: string; args: string[] }) => step.type === 'COPY' && step.args[0] === 'skills');
+    expect(copySkills?.args[1]).toBe(SKILLS_DIR);
   });
 });

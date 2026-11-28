@@ -2,6 +2,7 @@ import { Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { AppSandboxes } from '../../sandboxes.js';
 import { appIdFrom } from '../../sandboxes.js';
 
+/** Destino do `copy('skills', ...)` em e2b/builder-template.ts. Um teste confere que os dois batem. */
 export const SKILLS_DIR = '/home/user/skills';
 
 export function createBuilderWorkspace(sandboxes: AppSandboxes): Workspace {
