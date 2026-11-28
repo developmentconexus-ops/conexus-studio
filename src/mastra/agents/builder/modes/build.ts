@@ -1,15 +1,15 @@
 import type { AgentControllerMode } from '@mastra/core/agent-controller';
-import type { ModelId } from '../../../config.js';
+import type { MastraModelConfig } from '@mastra/core/llm';
 import { BUILD_MODE_ID } from './ids.js';
 
 export const APP_DIR = '/home/user/app';
 
-export function createBuildMode(model: ModelId): AgentControllerMode {
+export function createBuildMode(model: MastraModelConfig): AgentControllerMode {
   return {
     id: BUILD_MODE_ID,
     name: 'Build',
     description: 'Writes the app in the sandbox, runs it and proves it works.',
-    defaultModelId: model,
+    defaultModelId: typeof model === 'string' ? model : undefined,
     instructions: `You are in BUILD mode. You can read, write and run commands in the sandbox.
 
 - Build the app in ${APP_DIR}. If an approved plan exists, follow it step by step.

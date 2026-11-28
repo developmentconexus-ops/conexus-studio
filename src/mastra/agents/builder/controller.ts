@@ -3,7 +3,8 @@ import { AgentController } from '@mastra/core/agent-controller';
 import { createCodingAgent } from '@mastra/core/coding-agent';
 import type { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
-import type { HarnessTools, ModelId } from '../../config.js';
+import type { MastraModelConfig } from '@mastra/core/llm';
+import type { HarnessTools } from '../../config.js';
 import { BUILD_MODE_ID, createBuilderModes } from './modes/index.js';
 import { instructions } from './prompt.js';
 import { CONTROLLER_BUILTIN_TOOL_IDS, builderTools } from './tools/index.js';
@@ -13,7 +14,7 @@ export const BUILDER_ID = 'builder';
 const MAX_STEPS = 1_000;
 
 export interface BuilderDeps {
-  model: ModelId;
+  model: MastraModelConfig;
   memory: Memory;
   workspace: Workspace;
   tools?: HarnessTools;

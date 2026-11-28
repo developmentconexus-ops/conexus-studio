@@ -1,6 +1,7 @@
 import { Mastra } from '@mastra/core/mastra';
 import { RequestContext } from '@mastra/core/request-context';
 import { InMemoryStore } from '@mastra/core/storage';
+import type { MastraModelConfig } from '@mastra/core/llm';
 import { createMockModel } from '@mastra/core/test-utils/llm-mock';
 import { createTool, submitPlanTool } from '@mastra/core/tools';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,9 +32,9 @@ const hostTool = createTool({
   execute: async () => ({ ok: true }),
 });
 
-function build() {
+function build(model: MastraModelConfig = 'anthropic/claude-sonnet-5-5') {
   return createBuilder({
-    model: 'anthropic/claude-sonnet-5-5',
+    model,
     memory: createBuilderMemory('anthropic/claude-haiku-5-5'),
     workspace: createBuilderWorkspace(new AppSandboxes(machines.factory)),
     tools: { publish: hostTool },
@@ -98,7 +99,16 @@ describe('createBuilder', () => {
 
 describe('createBuilder in a controller session', () => {
   async function toolsSeenByTheModel(modeId: string): Promise<string[]> {
-    const { agent, controller } = build();
+    let streamOptions: { tools?: { name: string }[] } | undefined;
+    const model = createMockModel({
+      mockText: 'ok',
+      version: 'v2',
+      spyStream: (options) => {
+        streamOptions = options;
+      },
+    });
+    Object.defineProperty(model, 'provider', { value: 'anthropic' });
+    const { agent, controller } = build(model);
     new Mastra({
       agents: { builder: agent },
       agentControllers: { builder: controller },
@@ -109,16 +119,6 @@ describe('createBuilder in a controller session', () => {
     const session = await controller.createSession({ requestContext });
     await session.mode.switch({ modeId });
 
-    let streamOptions: { tools?: { name: string }[] } | undefined;
-    const model = createMockModel({
-      mockText: 'ok',
-      version: 'v2',
-      spyStream: (options) => {
-        streamOptions = options;
-      },
-    });
-    Object.defineProperty(model, 'provider', { value: 'anthropic' });
-    agent.__updateModel({ model });
     await session.sendMessage({ content: 'hello', requestContext });
 
     return (streamOptions?.tools ?? []).map((tool) => tool.name);
