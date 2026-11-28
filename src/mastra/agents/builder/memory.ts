@@ -1,19 +1,6 @@
 import { Memory } from '@mastra/memory';
+import type { ModelId } from '../../config.js';
 
-export const memory = new Memory({
-  options: {
-    observationalMemory: {
-      model: 'anthropic/claude-haiku-5-5',
-      scope: 'thread',
-      temporalMarkers: true,
-      observation: {
-        messageTokens: 70_000,
-        threadTitle: true,
-        observeAttachments: 'auto',
-      },
-      reflection: {
-        observationTokens: 40_000,
-      },
-    },
-  },
-});
+export function createBuilderMemory(model: ModelId): Memory {
+  throw new Error('not implemented');
+}

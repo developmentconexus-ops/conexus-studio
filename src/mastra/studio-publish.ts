@@ -1,19 +1,13 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { APP_DIR } from './modes.js';
 
-export const COMPANY_KEY = 'company';
-
-export const publishTool = createTool({
+export const studioPublishTool = createTool({
   id: 'publish',
   description:
-    'Publish the built app. Call it only after the app runs and you have proved it. Without a company in the request context it is a dry run that returns what it would publish.',
+    'Publish the built app. Call it only after the app runs and you have proved it. In the Studio it is a dry run that returns what it would publish.',
   inputSchema: z.object({
     name: z.string().min(1).describe('Short name for the app, in lowercase with dashes.'),
-    directory: z
-      .string()
-      .default(`${APP_DIR}/dist`)
-      .describe('Directory with the production build to publish.'),
+    directory: z.string().default('/home/user/app/dist').describe('Directory with the production build to publish.'),
   }),
   outputSchema: z.object({
     published: z.boolean(),
@@ -24,10 +18,6 @@ export const publishTool = createTool({
     message: z.string(),
   }),
   execute: async ({ name, directory }, context) => {
-    const company = context.requestContext?.get(COMPANY_KEY);
-    if (company) {
-      throw new Error('Real publishing is not wired yet.');
-    }
     const entries = (await context.workspace?.filesystem?.readdir(directory)) ?? [];
     return {
       published: false,
@@ -39,5 +29,3 @@ export const publishTool = createTool({
     };
   },
 });
-
-export const tools = { publish: publishTool };
