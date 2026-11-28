@@ -1,6 +1,6 @@
 import type { AgentController } from '@mastra/core/agent-controller';
 import { Mastra } from '@mastra/core/mastra';
-import { RequestContext } from '@mastra/core/request-context';
+import { MASTRA_RESOURCE_ID_KEY, RequestContext } from '@mastra/core/request-context';
 import { InMemoryStore } from '@mastra/core/storage';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createMockModel } from '@mastra/core/test-utils/llm-mock';
@@ -9,13 +9,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { HARNESS_APP_ID_KEY } from '../../config.js';
 import type { ConversationOwner, HarnessModels, ModelCall } from '../../config.js';
-import { ModelNotAllowedError, ModelNotSeededError } from '../../models.js';
+import { ConexusHarness } from '../../harness.js';
 import { AppSandboxes } from '../../sandboxes.js';
 import { createLocalMachines } from '../../testing/local-machines.js';
 import type { LocalMachines } from '../../testing/local-machines.js';
 import { BUILDER_ID, createBuilder } from './controller.js';
 import { createBuilderMemory } from './memory.js';
-import { builderModel, withModelDefaults } from './model.js';
+import { memoryModels } from './model.js';
 import { PLAN_MODE_AVAILABLE_TOOLS } from './modes/plan.js';
 import { createBuilderWorkspace } from './workspace.js';
 
@@ -36,11 +36,12 @@ const hostTool = createTool({
   execute: async () => ({ ok: true }),
 });
 
-function build(model: HarnessModels = {}) {
-  const models = withModelDefaults(model);
+function build() {
   return createBuilder({
-    models,
-    memory: createBuilderMemory(models),
+    model: { resolve: (modelId) => modelId },
+    memory: createBuilderMemory(
+      memoryModels({ resolve: (modelId) => modelId, memoryFor: () => ({ observer: 'host/observer', reflector: 'host/reflector' }) }),
+    ),
     workspace: createBuilderWorkspace(new AppSandboxes(machines.factory)),
     tools: { publish: hostTool },
     plansDir: '.conexus/plans',
@@ -55,6 +56,7 @@ function requestContextFor(appId: string): RequestContext {
 
 function requestContextInATurn(appId: string): RequestContext {
   const requestContext = requestContextFor(appId);
+  requestContext.set(MASTRA_RESOURCE_ID_KEY, 'resource');
   requestContext.set('controller', { resourceId: 'resource', sessionId: 'session', session: { modelId: 'anthropic/claude-sonnet-5-5' } });
   return requestContext;
 }
@@ -114,6 +116,23 @@ describe('createBuilder', () => {
   });
 });
 
+const harnesses: ConexusHarness[] = [];
+
+async function bootHarness(model: HarnessModels = {}) {
+  const harness = new ConexusHarness({ sandbox: machines.factory, tools: { publish: hostTool }, model });
+  harnesses.push(harness);
+  const prepared = await harness.prepare();
+  new Mastra({ ...prepared, storage: new InMemoryStore() });
+  await harness.finalize();
+  const controller = prepared.agentControllers?.builder;
+  if (!controller) throw new Error('the harness did not provide the builder controller');
+  return controller;
+}
+
+afterAll(async () => {
+  await Promise.all(harnesses.map((harness) => harness.shutdown()));
+});
+
 describe('createBuilder in a controller session', () => {
   async function streamOptionsSeenByTheModel(modeId: string) {
     let streamOptions: { tools?: { name: string }[]; providerOptions?: Record<string, unknown> } | undefined;
@@ -125,13 +144,7 @@ describe('createBuilder in a controller session', () => {
       },
     });
     Object.defineProperty(model, 'provider', { value: 'anthropic' });
-    const { agent, controller } = build({ defaultFor: () => 'test/model', resolve: () => model });
-    new Mastra({
-      agents: { builder: agent },
-      agentControllers: { builder: controller },
-      storage: new InMemoryStore(),
-    });
-    await controller.init();
+    const controller = await bootHarness({ defaultFor: () => 'test/model', resolve: () => model });
     const requestContext = requestContextFor('a');
     const session = await controller.createSession({ requestContext });
     await session.mode.switch({ modeId });
@@ -184,14 +197,16 @@ describe('createBuilder in a controller session', () => {
   });
 });
 
-describe('createBuilder model per conversation', () => {
+describe('model per conversation', () => {
   interface Seen {
     resolved: { modelId: string; call: ModelCall }[];
     calls: string[];
     defaults: ConversationOwner[];
   }
 
-  function bootBuilder(options: Pick<HarnessModels, 'defaultFor' | 'resolve'> = {}) {
+  class ModelNotAllowed extends Error {}
+
+  async function bootBuilder(options: Pick<HarnessModels, 'defaultFor' | 'resolve'> = {}) {
     const seen: Seen = { resolved: [], calls: [], defaults: [] };
     const models = new Map<string, MastraModelConfig>();
     const modelFor = (modelId: string) => {
@@ -202,8 +217,13 @@ describe('createBuilder model per conversation', () => {
       }
       return model;
     };
-    const { agent, controller } = build({
-      defaultFor: options.defaultFor ?? ((owner) => (seen.defaults.push(owner), 'host/default')),
+    const controller = await bootHarness({
+      defaultFor:
+        options.defaultFor ??
+        ((owner) => {
+          seen.defaults.push(owner);
+          return 'host/default';
+        }),
       resolve:
         options.resolve ??
         ((modelId, call) => {
@@ -211,8 +231,7 @@ describe('createBuilder model per conversation', () => {
           return modelFor(modelId);
         }),
     });
-    new Mastra({ agents: { builder: agent }, agentControllers: { builder: controller }, storage: new InMemoryStore() });
-    return { controller, seen };
+    return { controller, seen, modelFor };
   }
 
   type Session = Awaited<ReturnType<AgentController['createSession']>>;
@@ -221,45 +240,33 @@ describe('createBuilder model per conversation', () => {
     await session.sendMessage({ content: 'hello', requestContext });
   }
 
-  it('shows a new conversation on the host default as soon as the session exists, and runs it there', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
-    const requestContext = requestContextFor('a');
-
-    const session = await controller.createSession({ requestContext });
-    expect(session.model.get()).toBe('host/default');
-    await talk(session, requestContext);
-
-    expect(seen.calls).toEqual(['host/default']);
-  });
-
-  it('asks the host default once per conversation, with the owner the session has', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
-    const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'company:c:person:p' });
-
-    await talk(session, requestContext);
-    await talk(session, requestContext);
-
-    expect(seen.defaults).toEqual([{ resourceId: 'company:c:person:p', sessionId: 'session-1' }]);
-  });
-
-  it('lets each company or person have its own default', async () => {
-    const { controller, seen } = bootBuilder({ defaultFor: ({ resourceId }) => `host/default-of-${resourceId}` });
-    await controller.init();
+  it('starts a new conversation on the default of its owner, and the turn runs there', async () => {
+    const { controller, seen } = await bootBuilder({ defaultFor: ({ resourceId }) => `host/default-of-${resourceId}` });
+    const sessions: Session[] = [];
     for (const appId of ['a', 'b']) {
       const requestContext = requestContextFor(appId);
-      const session = await controller.createSession({ requestContext, id: `session-${appId}`, resourceId: `resource-${appId}` });
+      const session = await controller.createSession({ requestContext, id: `session-${appId}`, resourceId: `company:c1:person:${appId}` });
+      sessions.push(session);
       await talk(session, requestContext);
     }
 
-    expect(seen.calls).toEqual(['host/default-of-resource-a', 'host/default-of-resource-b']);
+    expect(sessions.map((session) => session.model.get())).toEqual([
+      'host/default-of-company:c1:person:a',
+      'host/default-of-company:c1:person:b',
+    ]);
+    expect(seen.calls).toEqual(['host/default-of-company:c1:person:a', 'host/default-of-company:c1:person:b']);
+  });
+
+  it('asks the default with the resource and the session of the conversation', async () => {
+    const { controller, seen } = await bootBuilder();
+
+    await controller.createSession({ requestContext: requestContextFor('a'), id: 'session-1', resourceId: 'company:c1:person:p1' });
+
+    expect(seen.defaults).toEqual([{ resourceId: 'company:c1:person:p1', sessionId: 'session-1' }]);
   });
 
   it('runs the next turn on the model the session switched to', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
+    const { controller, seen } = await bootBuilder();
     const requestContext = requestContextFor('a');
     const session = await controller.createSession({ requestContext });
     await talk(session, requestContext);
@@ -270,9 +277,8 @@ describe('createBuilder model per conversation', () => {
     expect(seen.calls).toEqual(['host/default', 'host/chosen']);
   });
 
-  it('keeps the chosen model when the conversation is resumed, without asking the host default again', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
+  it('keeps the chosen model when the conversation is resumed, without asking the default again', async () => {
+    const { controller, seen } = await bootBuilder();
     const requestContext = requestContextFor('a');
     const first = await controller.createSession({ requestContext, id: 'first' });
     await first.model.switch('host/chosen');
@@ -286,44 +292,70 @@ describe('createBuilder model per conversation', () => {
     expect(seen.defaults).toHaveLength(1);
   });
 
-  it('starts a new thread of the same session on the host default after the conversation switched models', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
+  it('does not change a conversation when the default of its owner changes later', async () => {
+    let current = 'host/default-a';
+    const { controller, seen } = await bootBuilder({ defaultFor: () => current });
+    const requestContext = requestContextFor('a');
+    const first = await controller.createSession({ requestContext, id: 'first' });
+    const threadId = first.thread.getId();
+    await controller.deleteSession({ sessionId: 'first' });
+    current = 'host/default-b';
+
+    const second = await controller.createSession({ requestContext, id: 'second', threadId: threadId ?? undefined });
+    await talk(second, requestContext);
+
+    expect(seen.calls).toEqual(['host/default-a']);
+  });
+
+  it('starts a new thread of the same session on the default again', async () => {
+    const { controller, seen } = await bootBuilder();
     const requestContext = requestContextFor('a');
     const session = await controller.createSession({ requestContext });
     await session.model.switch('host/chosen');
 
     await session.thread.create({ requestContext });
-    await vi.waitFor(() => expect(session.model.get()).toBe('host/default'));
     await talk(session, requestContext);
 
     expect(seen.calls).toEqual(['host/default']);
   });
 
-  it('does not overwrite a model the person picked while the host default was still being decided', async () => {
-    let release: (modelId: string) => void = () => {};
-    let slow = false;
-    const { controller } = bootBuilder({
-      defaultFor: () => (slow ? new Promise<string>((resolve) => (release = resolve)) : 'host/default'),
+  it('refuses to run a model that resolve rejects, with the error resolve threw', async () => {
+    const refused = new ModelNotAllowed('not allowed');
+    let allowed = true;
+    const calls: string[] = [];
+    const { controller } = await bootBuilder({
+      resolve: (modelId) => {
+        if (!allowed) throw refused;
+        return mockModel(() => calls.push(modelId));
+      },
     });
-    await controller.init();
     const requestContext = requestContextFor('a');
     const session = await controller.createSession({ requestContext });
-    slow = true;
+    await talk(session, requestContext);
+    allowed = false;
 
-    await session.thread.create({ requestContext });
-    await session.model.switch('host/chosen');
-    release('host/late-default');
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(session.model.get()).toBe('host/chosen');
+    await expect(talk(session, requestContext)).rejects.toBe(refused);
+    expect(calls).toEqual(['host/default']);
   });
 
-  it('hands resolve the id, the owner and the request context of the turn', async () => {
-    const { controller, seen } = bootBuilder();
-    await controller.init();
+  it('runs nothing when the default could not seed the conversation', async () => {
+    const { controller, seen } = await bootBuilder({
+      defaultFor: () => {
+        throw new Error('no account serves a model');
+      },
+    });
     const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'resource-1' });
+    const session = await controller.createSession({ requestContext });
+
+    expect(session.model.hasSelection()).toBe(false);
+    await expect(talk(session, requestContext)).rejects.toThrow(/no model/);
+    expect(seen.calls).toEqual([]);
+  });
+
+  it('hands resolve the id and the owner of the conversation', async () => {
+    const { controller, seen } = await bootBuilder();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'company:c1:person:p1' });
     await session.model.switch('host/chosen');
 
     await talk(session, requestContext);
@@ -331,74 +363,41 @@ describe('createBuilder model per conversation', () => {
     expect(seen.resolved.length).toBeGreaterThan(0);
     for (const { modelId, call } of seen.resolved) {
       expect(modelId).toBe('host/chosen');
-      expect(call).toMatchObject({ sessionId: 'session-1', resourceId: 'resource-1' });
+      expect(call.resourceId).toBe('company:c1:person:p1');
       expect(call.requestContext.get(HARNESS_APP_ID_KEY)).toBe('a');
     }
   });
 
-  it('fails the first turn closed when the host default failed, instead of running some other model', async () => {
-    const { controller, seen } = bootBuilder({
-      defaultFor: () => {
-        throw new Error('no account serves a model');
-      },
-    });
-    await controller.init();
-    const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext });
+  it('starts on Sonnet 5.5 when the host gives no model config', async () => {
+    const controller = await bootHarness();
 
-    await expect(talk(session, requestContext)).rejects.toBeInstanceOf(ModelNotSeededError);
-    expect(seen.calls).toEqual([]);
+    const session = await controller.createSession({ requestContext: requestContextFor('a') });
+
+    expect(session.model.get()).toBe('anthropic/claude-sonnet-5-5');
   });
 
-  it('fails the turn with the typed error when the stored model is no longer allowed, and never falls back', async () => {
-    let allowed = true;
-    const { controller, seen } = bootBuilder({
-      resolve: (modelId, call) => {
-        if (!allowed) throw new ModelNotAllowedError(modelId, call);
-        return mockModel(() => seen.calls.push(modelId));
-      },
-    });
-    await controller.init();
-    const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext, id: 'session-1' });
-    await talk(session, requestContext);
-
-    allowed = false;
-
-    await expect(talk(session, requestContext)).rejects.toBeInstanceOf(ModelNotAllowedError);
-    expect(seen.calls).toEqual(['host/default']);
-  });
-
-  it('sends the id straight to the router when the host gives no resolve', async () => {
-    const model = builderModel(withModelDefaults());
-    const requestContext = requestContextFor('a');
-    requestContext.set('controller', { resourceId: 'r', sessionId: 's', session: { modelId: 'anthropic/claude-sonnet-5-5' } });
-
-    expect(await model({ requestContext })).toBe('anthropic/claude-sonnet-5-5');
-  });
-});
-
-describe('createBuilder memory in a real turn', () => {
-  it('asks the host for the memory models of the session owner when observation runs, and resolves them', async () => {
-    const asked: ConversationOwner[] = [];
+  it('asks the host for the memory models of the owner when observation runs, and resolves them', async () => {
+    const asked: unknown[] = [];
     const resolvedMemory: { modelId: string; call: ModelCall }[] = [];
-    const { agent, controller } = build({
-      memoryFor: (owner) => (asked.push(owner), { observer: 'host/observer', reflector: 'host/reflector' }),
+    const controller = await bootHarness({
+      defaultFor: () => 'host/default',
+      memoryFor: (owner) => {
+        asked.push(owner);
+        return { observer: 'host/observer', reflector: 'host/reflector' };
+      },
       resolve: (modelId, call) => {
         if (modelId === 'host/observer' || modelId === 'host/reflector') resolvedMemory.push({ modelId, call });
         return mockModel(() => {});
       },
     });
-    new Mastra({ agents: { builder: agent }, agentControllers: { builder: controller }, storage: new InMemoryStore() });
-    await controller.init();
     const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'company:c:person:p' });
+    const session = await controller.createSession({ requestContext, resourceId: 'company:c1:person:p1' });
 
     await session.sendMessage({ content: 'lorem ipsum '.repeat(40_000), requestContext });
 
     await vi.waitFor(() => expect(resolvedMemory.length).toBeGreaterThan(0));
-    expect(asked[0]).toEqual({ resourceId: 'company:c:person:p', sessionId: 'session-1' });
+    expect(asked[0]).toEqual({ resourceId: 'company:c1:person:p1' });
     expect(resolvedMemory[0]?.modelId).toBe('host/observer');
-    expect(resolvedMemory[0]?.call).toMatchObject({ resourceId: 'company:c:person:p', sessionId: 'session-1' });
+    expect(resolvedMemory[0]?.call.resourceId).toBe('company:c1:person:p1');
   }, 30_000);
 });

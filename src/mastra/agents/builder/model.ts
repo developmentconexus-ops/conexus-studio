@@ -1,54 +1,57 @@
-import type { AgentControllerRequestContext } from '@mastra/core/agent-controller';
+import type { AgentController, AgentControllerRequestContext, Session } from '@mastra/core/agent-controller';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import type { RequestContext } from '@mastra/core/request-context';
-import type { ConversationOwner, HarnessModels, MemoryModels, ModelCall, ModelId } from '../../config.js';
-import { ModelNotSeededError } from '../../models.js';
+import type { DynamicArgument } from '@mastra/core/types';
+import type { HarnessModels, ModelId } from '../../config.js';
 
-export type ResolvedModels = Required<HarnessModels>;
+type Models = Required<HarnessModels>;
 
-const DEFAULT_BUILDER_MODEL: ModelId = 'anthropic/claude-sonnet-5-5';
-const DEFAULT_MEMORY_MODEL: ModelId = 'anthropic/claude-haiku-5-5';
-
-export function withModelDefaults(models: HarnessModels = {}): ResolvedModels {
-  return {
-    defaultFor: models.defaultFor ?? (() => DEFAULT_BUILDER_MODEL),
-    resolve: models.resolve ?? ((modelId) => modelId),
-    memoryFor: models.memoryFor ?? ((): MemoryModels => ({ observer: DEFAULT_MEMORY_MODEL, reflector: DEFAULT_MEMORY_MODEL })),
-  };
-}
-
-/**
- * O core não aplica o modelo da sessão ao agente: ele só o põe em `requestContext.get('controller')`, com o dono e o
- * `session.modelId` ('' enquanto a conversa não tem escolha). Este arquivo é o único que lê essa chave.
- */
-function controllerOf(requestContext: RequestContext): AgentControllerRequestContext | undefined {
-  return requestContext.get('controller');
-}
-
-/** O dono da chamada. Na memória em segundo plano o core ainda grava o `resourceId` do turno, mesmo sem a entrada `controller`. */
-export function ownerOf(requestContext: RequestContext): ConversationOwner | undefined {
-  const controller = controllerOf(requestContext);
-  if (controller) return { resourceId: controller.resourceId, sessionId: controller.sessionId };
+function ownerOf(requestContext: RequestContext): { resourceId: string } {
   const resourceId = requestContext.get(MASTRA_RESOURCE_ID_KEY);
-  return typeof resourceId === 'string' ? { resourceId, sessionId: '' } : undefined;
+  if (typeof resourceId !== 'string' || resourceId === '') {
+    throw new Error('No resourceId on this model call. The agent must run inside an AgentController session.');
+  }
+  return { resourceId };
 }
 
-/** O `model` do agente: só lê o id gravado na conversa. Sem id, falha, nunca escolhe um modelo escondido. */
-export function builderModel({ resolve }: ResolvedModels) {
-  return async ({ requestContext }: { requestContext: RequestContext }): Promise<MastraModelConfig> => {
-    const controller = controllerOf(requestContext);
-    if (!controller?.session.modelId) throw new ModelNotSeededError();
-    const call: ModelCall = { resourceId: controller.resourceId, sessionId: controller.sessionId, requestContext };
-    return resolve(controller.session.modelId, call);
+export function builderModel({ resolve }: Pick<Models, 'resolve'>): DynamicArgument<MastraModelConfig> {
+  return async ({ requestContext }: { requestContext: RequestContext }) => {
+    const controller: AgentControllerRequestContext | undefined = requestContext.get('controller');
+    const modelId = controller?.session.modelId;
+    if (!modelId) throw new Error('This conversation has no model. The host must seed it before the first turn.');
+    return resolve(modelId, { resourceId: ownerOf(requestContext).resourceId, requestContext });
   };
 }
 
-/** O modelo de um papel da memória: o host diz o id pelo dono, e o `resolve` o transforma em modelo com chave. */
-export function memoryModel({ memoryFor, resolve }: ResolvedModels, role: keyof MemoryModels) {
-  return async ({ requestContext }: { requestContext: RequestContext }): Promise<MastraModelConfig> => {
-    const owner = ownerOf(requestContext);
-    if (!owner) throw new Error('Memory call without a conversation owner: no controller entry and no resource id.');
-    return resolve((await memoryFor(owner))[role], { ...owner, requestContext });
-  };
+export function memoryModels({ resolve, memoryFor }: Pick<Models, 'resolve' | 'memoryFor'>): {
+  observer: DynamicArgument<MastraModelConfig>;
+  reflector: DynamicArgument<MastraModelConfig>;
+} {
+  const modelOf = (role: 'observer' | 'reflector'): DynamicArgument<MastraModelConfig> =>
+    async ({ requestContext }: { requestContext: RequestContext }) => {
+      const { resourceId } = ownerOf(requestContext);
+      const models = await memoryFor({ resourceId });
+      return resolve(models[role], { resourceId, requestContext });
+    };
+  return { observer: modelOf('observer'), reflector: modelOf('reflector') };
+}
+
+async function seed(session: Session, picked: ModelId | Promise<ModelId>): Promise<void> {
+  if (typeof picked === 'string') session.model.set({ modelId: picked });
+  await session.model.switch(await picked);
+}
+
+export function seedConversationModels(controller: AgentController, defaultFor: Models['defaultFor']): void {
+  controller.onSessionCreated(
+    async (session) => {
+      const owner = { resourceId: session.identity.getResourceId(), sessionId: session.identity.getId() };
+      session.subscribe((event) => {
+        if (event.type !== 'thread_created' || session.model.hasSelection()) return;
+        seed(session, defaultFor(owner)).catch(() => {});
+      });
+      if (!session.model.hasSelection()) await seed(session, defaultFor(owner));
+    },
+    { blocking: true },
+  );
 }

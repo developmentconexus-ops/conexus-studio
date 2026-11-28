@@ -3,12 +3,10 @@ import { AgentController } from '@mastra/core/agent-controller';
 import { createCodingAgent } from '@mastra/core/coding-agent';
 import type { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
-import type { HarnessTools } from '../../config.js';
+import type { HarnessModels, HarnessTools } from '../../config.js';
 import { BUILD_MODE_ID, createBuilderModes } from './modes/index.js';
 import { builderModel } from './model.js';
-import type { ResolvedModels } from './model.js';
 import { instructions } from './prompt.js';
-import { seedConversationModels } from './seed.js';
 import { CONTROLLER_BUILTIN_TOOL_IDS, builderTools } from './tools/index.js';
 
 export const BUILDER_ID = 'builder';
@@ -16,7 +14,7 @@ export const BUILDER_ID = 'builder';
 const MAX_STEPS = 1_000;
 
 export interface BuilderDeps {
-  models: ResolvedModels;
+  model: Pick<Required<HarnessModels>, 'resolve'>;
   memory: Memory;
   workspace: Workspace;
   tools?: HarnessTools;
@@ -28,7 +26,7 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
     id: BUILDER_ID,
     name: 'Builder',
     instructions,
-    model: builderModel(deps.models),
+    model: builderModel(deps.model),
     tools: builderTools(deps.tools),
     memory: deps.memory,
     workspace: deps.workspace,
@@ -47,6 +45,5 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
     initialState: { yolo: true },
     disableBuiltinTools: [...CONTROLLER_BUILTIN_TOOL_IDS],
   });
-  seedConversationModels(controller, deps.models.defaultFor);
   return { agent, controller };
 }

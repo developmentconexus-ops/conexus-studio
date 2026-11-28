@@ -1,14 +1,20 @@
 import type { Agent } from '@mastra/core/agent';
 import type { AgentController } from '@mastra/core/agent-controller';
 import type { Workspace } from '@mastra/core/workspace';
-import type { ConexusHarnessConfig, HarnessMastraArgs } from './config.js';
+import type { ConexusHarnessConfig, HarnessMastraArgs, HarnessModels } from './config.js';
 import { createBuilder } from './agents/builder/controller.js';
 import { createBuilderMemory } from './agents/builder/memory.js';
-import { withModelDefaults } from './agents/builder/model.js';
+import { memoryModels, seedConversationModels } from './agents/builder/model.js';
 import { createBuilderWorkspace } from './agents/builder/workspace.js';
 import { AppSandboxes } from './sandboxes.js';
 
 const DEFAULT_PLANS_DIR = '.conexus/plans';
+
+const DEFAULT_MODELS: Required<HarnessModels> = {
+  defaultFor: () => 'anthropic/claude-sonnet-5-5',
+  resolve: (modelId) => modelId,
+  memoryFor: () => ({ observer: 'anthropic/claude-haiku-5-5', reflector: 'anthropic/claude-haiku-5-5' }),
+};
 
 interface Prepared {
   agent: Agent;
@@ -30,17 +36,18 @@ export class ConexusHarness {
   async prepare(): Promise<HarnessMastraArgs> {
     if (this.prepared) throw new Error('ConexusHarness.prepare() runs once. Create a new ConexusHarness instead.');
 
-    const { auth, model, tools, plansDir } = this.config;
-    const models = withModelDefaults(model);
-    const memory = createBuilderMemory(models);
+    const { auth, tools, plansDir } = this.config;
+    const models = { ...DEFAULT_MODELS, ...this.config.model };
+    const memory = createBuilderMemory(memoryModels(models));
     const workspace = createBuilderWorkspace(this.sandboxes);
     const { agent, controller } = createBuilder({
-      models,
+      model: { resolve: models.resolve },
       memory,
       workspace,
       tools,
       plansDir: plansDir ?? DEFAULT_PLANS_DIR,
     });
+    seedConversationModels(controller, models.defaultFor);
     this.prepared = { agent, controller, workspace };
 
     return {

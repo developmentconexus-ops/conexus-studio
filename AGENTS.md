@@ -10,7 +10,8 @@ Regras para quem trabalha neste repositório. O contexto e a árvore estão no `
    Função de fábrica para o que só monta peças (`createBuilder`).
 4. **Pastas.** Nunca ponha `config.ts` nem `instructions.*` dentro de `src/mastra/agents/<nome>/`. Esses nomes ligam a
    descoberta por arquivos do `mastra dev`.
-5. **Modelos.** O Construtor roda em `anthropic/claude-sonnet-5-5` por padrão, ou no modelo da conversa e no padrão que o host passar em `model.defaultFor`. A memória usa por padrão `anthropic/claude-haiku-5-5`; a empresa pode trocar pelo host (`model.memoryFor`).
+5. **Modelos.** O Construtor usa por padrão `anthropic/claude-sonnet-5-5` e a memória usa por padrão
+   `anthropic/claude-haiku-5-5`. O host pode trocar os dois por empresa, em `model`.
 6. **O pacote não escolhe o banco, a observabilidade, o logger, a máquina nem o login.** Tudo isso vem do host.
 7. **Antes de cada commit**, rode `npm run check`. Teste testa comportamento, não implementação.
 8. **Nenhum segredo, dado de empresa ou caminho de máquina em commit.** O repositório é público.
