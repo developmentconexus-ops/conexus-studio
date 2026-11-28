@@ -21,6 +21,8 @@ const harness = new ConexusHarness({
     return { sandbox, filesystem: sandbox.filesystem };
   },
   tools: { publish: studioPublishTool },
+  // The Studio plan card route only reads plans from .mastracode/plans (@mastra/server plans-DGC1grMp.js PLANS_DIRECTORY, isPlanPath).
+  plansDir: '.mastracode/plans',
 });
 
 const prepared = await harness.prepare();

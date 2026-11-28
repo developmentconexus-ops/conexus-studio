@@ -17,6 +17,7 @@ export interface BuilderDeps {
   memory: Memory;
   workspace: Workspace;
   tools?: HarnessTools;
+  plansDir: string;
 }
 
 /** Monta o Construtor. Nada é criado no import. */
@@ -34,7 +35,7 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
   const controller = new AgentController({
     id: BUILDER_ID,
     agent,
-    modes: createBuilderModes(deps.model),
+    modes: createBuilderModes({ model: deps.model, plansDir: deps.plansDir }),
     defaultModeId: BUILD_MODE_ID,
     memory: deps.memory,
     workspace: deps.workspace,

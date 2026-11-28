@@ -37,6 +37,7 @@ function build() {
     memory: createBuilderMemory('anthropic/claude-haiku-5-5'),
     workspace: createBuilderWorkspace(new AppSandboxes(machines.factory)),
     tools: { publish: hostTool },
+    plansDir: '.conexus/plans',
   });
 }
 

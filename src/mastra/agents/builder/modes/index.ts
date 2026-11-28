@@ -5,6 +5,6 @@ import { createPlanMode } from './plan.js';
 
 export { BUILD_MODE_ID, PLAN_MODE_ID } from './ids.js';
 
-export function createBuilderModes(model: ModelId): AgentControllerMode[] {
-  return [createBuildMode(model), createPlanMode(model)];
+export function createBuilderModes({ model, plansDir }: { model: ModelId; plansDir: string }): AgentControllerMode[] {
+  return [createBuildMode(model), createPlanMode({ model, plansDir })];
 }

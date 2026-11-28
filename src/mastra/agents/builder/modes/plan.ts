@@ -3,8 +3,6 @@ import { WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { ModelId } from '../../../config.js';
 import { BUILD_MODE_ID, PLAN_MODE_ID } from './ids.js';
 
-export const PLANS_DIR = '.mastracode/plans';
-
 export const PLAN_MODE_AVAILABLE_TOOLS: string[] = [
   WORKSPACE_TOOLS.FILESYSTEM.READ_FILE,
   WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES,
@@ -25,7 +23,7 @@ export const PLAN_MODE_AVAILABLE_TOOLS: string[] = [
   'task_check',
 ];
 
-export function createPlanMode(model: ModelId): AgentControllerMode {
+export function createPlanMode({ model, plansDir }: { model: ModelId; plansDir: string }): AgentControllerMode {
   return {
     id: PLAN_MODE_ID,
     name: 'Plan',
@@ -35,9 +33,9 @@ export function createPlanMode(model: ModelId): AgentControllerMode {
     instructions: `You are in PLAN mode.
 
 - You can read, search and ask the user questions. You cannot run commands. Do not write app code.
-- The only files you write are markdown plan files directly inside ${PLANS_DIR}.
+- The only files you write are markdown plan files directly inside ${plansDir}.
 - Ask the user whenever a choice would change what gets built. Do not guess.
-- Write the plan to ${PLANS_DIR}/<slug>.md, starting with a "# Title" heading: what the app does, the screens, the stack, the files to create and how you will prove it works.
+- Write the plan to ${plansDir}/<slug>.md, starting with a "# Title" heading: what the app does, the screens, the stack, the files to create and how you will prove it works.
 - Then call submit_plan with that same relative path. Never paste the plan body in chat.
 - If the user asks for changes, edit the same file and call submit_plan again.`,
     metadata: { default: false },

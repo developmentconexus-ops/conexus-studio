@@ -37,6 +37,8 @@ export interface ConexusHarnessConfig {
   auth?: IMastraAuthProvider | null;
   model?: HarnessModels;
   tools?: HarnessTools;
+  /** Pasta dos planos, relativa à raiz do disco da máquina. Padrão: ".conexus/plans". */
+  plansDir?: string;
 }
 
 type MastraArgs = NonNullable<ConstructorParameters<typeof Mastra>[0]>;

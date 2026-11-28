@@ -2,9 +2,9 @@ import { WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import { describe, expect, it } from 'vitest';
 import { APP_DIR } from './build.js';
 import { BUILD_MODE_ID, PLAN_MODE_ID, createBuilderModes } from './index.js';
-import { PLANS_DIR, PLAN_MODE_AVAILABLE_TOOLS } from './plan.js';
+import { PLAN_MODE_AVAILABLE_TOOLS } from './plan.js';
 
-const modes = createBuilderModes('anthropic/claude-sonnet-5-5');
+const modes = createBuilderModes({ model: 'anthropic/claude-sonnet-5-5', plansDir: '.conexus/plans' });
 const plan = modes.find((mode) => mode.id === PLAN_MODE_ID);
 const build = modes.find((mode) => mode.id === BUILD_MODE_ID);
 
@@ -30,9 +30,16 @@ describe('builder modes', () => {
     expect(build?.availableTools).toBeUndefined();
   });
 
-  it('keeps the plan where the Studio plan card reads it', () => {
-    expect(PLANS_DIR).toBe('.mastracode/plans');
-    expect(plan?.instructions).toContain(`${PLANS_DIR}/<slug>.md`);
+  it('tells the model to write the plan in the plans directory it is given', () => {
+    expect(plan?.instructions).toContain('.conexus/plans/<slug>.md');
+    const custom = createBuilderModes({ model: 'anthropic/claude-sonnet-5-5', plansDir: 'custom/plans' }).find(
+      (mode) => mode.id === PLAN_MODE_ID,
+    );
+    expect(custom?.instructions).toContain('custom/plans/<slug>.md');
+    expect(custom?.instructions).not.toContain('.conexus/plans');
+  });
+
+  it('builds in the app directory', () => {
     expect(build?.instructions).toContain(APP_DIR);
   });
 
