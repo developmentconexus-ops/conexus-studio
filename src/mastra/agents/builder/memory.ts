@@ -1,19 +1,21 @@
 import { Memory } from '@mastra/memory';
-import type { MastraModelConfig } from '@mastra/core/llm';
+import { memoryModel } from './model.js';
+import type { ResolvedModels } from './model.js';
 
-export function createBuilderMemory(model: MastraModelConfig): Memory {
+export function createBuilderMemory(models: ResolvedModels): Memory {
   return new Memory({
     options: {
       observationalMemory: {
-        model,
         scope: 'thread',
         temporalMarkers: true,
         observation: {
+          model: memoryModel(models, 'observer'),
           messageTokens: 70_000,
           threadTitle: true,
           observeAttachments: 'auto',
         },
         reflection: {
+          model: memoryModel(models, 'reflector'),
           observationTokens: 40_000,
         },
       },

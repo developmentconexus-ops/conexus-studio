@@ -5,16 +5,17 @@ import { InMemoryStore } from '@mastra/core/storage';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createMockModel } from '@mastra/core/test-utils/llm-mock';
 import { createTool, submitPlanTool } from '@mastra/core/tools';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { HARNESS_APP_ID_KEY } from '../../config.js';
-import type { BuilderModelConfig } from '../../config.js';
+import type { ConversationOwner, HarnessModels, ModelCall } from '../../config.js';
+import { ModelNotAllowedError, ModelNotSeededError } from '../../models.js';
 import { AppSandboxes } from '../../sandboxes.js';
 import { createLocalMachines } from '../../testing/local-machines.js';
 import type { LocalMachines } from '../../testing/local-machines.js';
 import { BUILDER_ID, createBuilder } from './controller.js';
 import { createBuilderMemory } from './memory.js';
-import { createBuilderModel } from './model.js';
+import { builderModel, withModelDefaults } from './model.js';
 import { PLAN_MODE_AVAILABLE_TOOLS } from './modes/plan.js';
 import { createBuilderWorkspace } from './workspace.js';
 
@@ -35,10 +36,11 @@ const hostTool = createTool({
   execute: async () => ({ ok: true }),
 });
 
-function build(model: BuilderModelConfig = { defaultId: 'anthropic/claude-sonnet-5-5' }) {
+function build(model: HarnessModels = {}) {
+  const models = withModelDefaults(model);
   return createBuilder({
-    model,
-    memory: createBuilderMemory('anthropic/claude-haiku-5-5'),
+    models,
+    memory: createBuilderMemory(models),
     workspace: createBuilderWorkspace(new AppSandboxes(machines.factory)),
     tools: { publish: hostTool },
     plansDir: '.conexus/plans',
@@ -51,11 +53,23 @@ function requestContextFor(appId: string): RequestContext {
   return requestContext;
 }
 
+function requestContextInATurn(appId: string): RequestContext {
+  const requestContext = requestContextFor(appId);
+  requestContext.set('controller', { resourceId: 'resource', sessionId: 'session', session: { modelId: 'anthropic/claude-sonnet-5-5' } });
+  return requestContext;
+}
+
+function mockModel(onStream: () => void) {
+  const model = createMockModel({ mockText: 'ok', version: 'v2', spyStream: onStream });
+  Object.defineProperty(model, 'provider', { value: 'anthropic' });
+  return model;
+}
+
 describe('createBuilder', () => {
   it('gives the agent the controller tools, the web tools, preview_url and the host tools', async () => {
     const { agent } = build();
 
-    const tools = await agent.listTools({ requestContext: requestContextFor('a') });
+    const tools = await agent.listTools({ requestContext: requestContextInATurn('a') });
 
     expect(Object.keys(tools).sort()).toEqual(
       [
@@ -76,7 +90,7 @@ describe('createBuilder', () => {
   it('keeps submit_plan on the agent, which is what the Studio plan card route looks for', async () => {
     const { agent } = build();
 
-    const tools = await agent.listTools({ requestContext: requestContextFor('a') });
+    const tools = await agent.listTools({ requestContext: requestContextInATurn('a') });
 
     expect(Object.values(tools).some((tool) => 'id' in tool && tool.id === submitPlanTool.id)).toBe(true);
   });
@@ -111,7 +125,7 @@ describe('createBuilder in a controller session', () => {
       },
     });
     Object.defineProperty(model, 'provider', { value: 'anthropic' });
-    const { agent, controller } = build({ defaultId: 'test/model', resolve: () => model });
+    const { agent, controller } = build({ defaultFor: () => 'test/model', resolve: () => model });
     new Mastra({
       agents: { builder: agent },
       agentControllers: { builder: controller },
@@ -172,57 +186,67 @@ describe('createBuilder in a controller session', () => {
 
 describe('createBuilder model per conversation', () => {
   interface Seen {
-    resolved: { modelId: string; requestContext: RequestContext }[];
+    resolved: { modelId: string; call: ModelCall }[];
     calls: string[];
+    defaults: ConversationOwner[];
   }
 
-  function bootBuilder(options: { defaultId?: BuilderModelConfig['defaultId'] } = {}) {
-    const seen: Seen = { resolved: [], calls: [] };
+  function bootBuilder(options: Pick<HarnessModels, 'defaultFor' | 'resolve'> = {}) {
+    const seen: Seen = { resolved: [], calls: [], defaults: [] };
     const models = new Map<string, MastraModelConfig>();
     const modelFor = (modelId: string) => {
       let model = models.get(modelId);
       if (!model) {
-        model = createMockModel({ mockText: 'ok', version: 'v2', spyStream: () => seen.calls.push(modelId) });
-        Object.defineProperty(model, 'provider', { value: 'anthropic' });
+        model = mockModel(() => seen.calls.push(modelId));
         models.set(modelId, model);
       }
       return model;
     };
     const { agent, controller } = build({
-      defaultId: options.defaultId ?? 'host/default',
-      resolve: (modelId, { requestContext }) => {
-        seen.resolved.push({ modelId, requestContext });
-        return modelFor(modelId);
-      },
+      defaultFor: options.defaultFor ?? ((owner) => (seen.defaults.push(owner), 'host/default')),
+      resolve:
+        options.resolve ??
+        ((modelId, call) => {
+          seen.resolved.push({ modelId, call });
+          return modelFor(modelId);
+        }),
     });
     new Mastra({ agents: { builder: agent }, agentControllers: { builder: controller }, storage: new InMemoryStore() });
     return { controller, seen };
   }
 
-  async function talk(session: Awaited<ReturnType<AgentController['createSession']>>, requestContext: RequestContext) {
+  type Session = Awaited<ReturnType<AgentController['createSession']>>;
+
+  async function talk(session: Session, requestContext: RequestContext) {
     await session.sendMessage({ content: 'hello', requestContext });
   }
 
-  it('runs a new conversation on the host default', async () => {
+  it('shows a new conversation on the host default as soon as the session exists, and runs it there', async () => {
     const { controller, seen } = bootBuilder();
     await controller.init();
     const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext });
 
+    const session = await controller.createSession({ requestContext });
+    expect(session.model.get()).toBe('host/default');
     await talk(session, requestContext);
 
     expect(seen.calls).toEqual(['host/default']);
   });
 
-  it('asks the host default per request, so each company or person can have its own', async () => {
-    const asked: string[] = [];
-    const { controller, seen } = bootBuilder({
-      defaultId: ({ requestContext }) => {
-        const appId = String(requestContext.get(HARNESS_APP_ID_KEY));
-        asked.push(appId);
-        return `host/default-of-${appId}`;
-      },
-    });
+  it('asks the host default once per conversation, with the owner the session has', async () => {
+    const { controller, seen } = bootBuilder();
+    await controller.init();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'company:c:person:p' });
+
+    await talk(session, requestContext);
+    await talk(session, requestContext);
+
+    expect(seen.defaults).toEqual([{ resourceId: 'company:c:person:p', sessionId: 'session-1' }]);
+  });
+
+  it('lets each company or person have its own default', async () => {
+    const { controller, seen } = bootBuilder({ defaultFor: ({ resourceId }) => `host/default-of-${resourceId}` });
     await controller.init();
     for (const appId of ['a', 'b']) {
       const requestContext = requestContextFor(appId);
@@ -230,8 +254,7 @@ describe('createBuilder model per conversation', () => {
       await talk(session, requestContext);
     }
 
-    expect(seen.calls).toEqual(['host/default-of-a', 'host/default-of-b']);
-    expect([...new Set(asked)]).toEqual(['a', 'b']);
+    expect(seen.calls).toEqual(['host/default-of-resource-a', 'host/default-of-resource-b']);
   });
 
   it('runs the next turn on the model the session switched to', async () => {
@@ -247,7 +270,7 @@ describe('createBuilder model per conversation', () => {
     expect(seen.calls).toEqual(['host/default', 'host/chosen']);
   });
 
-  it('keeps the chosen model when the conversation is resumed in a new session', async () => {
+  it('keeps the chosen model when the conversation is resumed, without asking the host default again', async () => {
     const { controller, seen } = bootBuilder();
     await controller.init();
     const requestContext = requestContextFor('a');
@@ -260,9 +283,10 @@ describe('createBuilder model per conversation', () => {
     await talk(second, requestContext);
 
     expect(seen.calls).toEqual(['host/chosen']);
+    expect(seen.defaults).toHaveLength(1);
   });
 
-  it('starts a new conversation on the host default after another one switched models', async () => {
+  it('starts a new thread of the same session on the host default after the conversation switched models', async () => {
     const { controller, seen } = bootBuilder();
     await controller.init();
     const requestContext = requestContextFor('a');
@@ -270,47 +294,111 @@ describe('createBuilder model per conversation', () => {
     await session.model.switch('host/chosen');
 
     await session.thread.create({ requestContext });
+    await vi.waitFor(() => expect(session.model.get()).toBe('host/default'));
     await talk(session, requestContext);
 
     expect(seen.calls).toEqual(['host/default']);
   });
 
-  it('hands resolve the id, the request context of the turn and the session id', async () => {
+  it('does not overwrite a model the person picked while the host default was still being decided', async () => {
+    let release: (modelId: string) => void = () => {};
+    let slow = false;
+    const { controller } = bootBuilder({
+      defaultFor: () => (slow ? new Promise<string>((resolve) => (release = resolve)) : 'host/default'),
+    });
+    await controller.init();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext });
+    slow = true;
+
+    await session.thread.create({ requestContext });
+    await session.model.switch('host/chosen');
+    release('host/late-default');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(session.model.get()).toBe('host/chosen');
+  });
+
+  it('hands resolve the id, the owner and the request context of the turn', async () => {
     const { controller, seen } = bootBuilder();
     await controller.init();
     const requestContext = requestContextFor('a');
-    const session = await controller.createSession({ requestContext, id: 'session-1' });
+    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'resource-1' });
     await session.model.switch('host/chosen');
 
     await talk(session, requestContext);
 
     expect(seen.resolved.length).toBeGreaterThan(0);
-    for (const { modelId, requestContext: received } of seen.resolved) {
+    for (const { modelId, call } of seen.resolved) {
       expect(modelId).toBe('host/chosen');
-      expect(received.get(HARNESS_APP_ID_KEY)).toBe('a');
-      expect(received.get('controller')).toMatchObject({ sessionId: 'session-1' });
+      expect(call).toMatchObject({ sessionId: 'session-1', resourceId: 'resource-1' });
+      expect(call.requestContext.get(HARNESS_APP_ID_KEY)).toBe('a');
     }
   });
 
-  it('sends the id straight to the router when the host gives no resolve', async () => {
-    const { model } = createBuilderModel({ defaultId: 'anthropic/claude-sonnet-5-5' });
-
-    expect(await model({ requestContext: requestContextFor('a') })).toBe('anthropic/claude-sonnet-5-5');
-  });
-
-  it('resolves subagent models through the same resolve', () => {
-    const requestContext = requestContextFor('a');
-    const resolved: string[] = [];
-    const { resolveSubagentModel } = createBuilderModel({
-      defaultId: 'host/default',
-      resolve: (modelId, args) => {
-        resolved.push(`${modelId}:${args.requestContext.get(HARNESS_APP_ID_KEY)}`);
-        return modelId;
+  it('fails the first turn closed when the host default failed, instead of running some other model', async () => {
+    const { controller, seen } = bootBuilder({
+      defaultFor: () => {
+        throw new Error('no account serves a model');
       },
     });
+    await controller.init();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext });
 
-    resolveSubagentModel('host/subagent', { requestContext });
-
-    expect(resolved).toEqual(['host/subagent:a']);
+    await expect(talk(session, requestContext)).rejects.toBeInstanceOf(ModelNotSeededError);
+    expect(seen.calls).toEqual([]);
   });
+
+  it('fails the turn with the typed error when the stored model is no longer allowed, and never falls back', async () => {
+    let allowed = true;
+    const { controller, seen } = bootBuilder({
+      resolve: (modelId, call) => {
+        if (!allowed) throw new ModelNotAllowedError(modelId, call);
+        return mockModel(() => seen.calls.push(modelId));
+      },
+    });
+    await controller.init();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext, id: 'session-1' });
+    await talk(session, requestContext);
+
+    allowed = false;
+
+    await expect(talk(session, requestContext)).rejects.toBeInstanceOf(ModelNotAllowedError);
+    expect(seen.calls).toEqual(['host/default']);
+  });
+
+  it('sends the id straight to the router when the host gives no resolve', async () => {
+    const model = builderModel(withModelDefaults());
+    const requestContext = requestContextFor('a');
+    requestContext.set('controller', { resourceId: 'r', sessionId: 's', session: { modelId: 'anthropic/claude-sonnet-5-5' } });
+
+    expect(await model({ requestContext })).toBe('anthropic/claude-sonnet-5-5');
+  });
+});
+
+describe('createBuilder memory in a real turn', () => {
+  it('asks the host for the memory models of the session owner when observation runs, and resolves them', async () => {
+    const asked: ConversationOwner[] = [];
+    const resolvedMemory: { modelId: string; call: ModelCall }[] = [];
+    const { agent, controller } = build({
+      memoryFor: (owner) => (asked.push(owner), { observer: 'host/observer', reflector: 'host/reflector' }),
+      resolve: (modelId, call) => {
+        if (modelId === 'host/observer' || modelId === 'host/reflector') resolvedMemory.push({ modelId, call });
+        return mockModel(() => {});
+      },
+    });
+    new Mastra({ agents: { builder: agent }, agentControllers: { builder: controller }, storage: new InMemoryStore() });
+    await controller.init();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext, id: 'session-1', resourceId: 'company:c:person:p' });
+
+    await session.sendMessage({ content: 'lorem ipsum '.repeat(40_000), requestContext });
+
+    await vi.waitFor(() => expect(resolvedMemory.length).toBeGreaterThan(0));
+    expect(asked[0]).toEqual({ resourceId: 'company:c:person:p', sessionId: 'session-1' });
+    expect(resolvedMemory[0]?.modelId).toBe('host/observer');
+    expect(resolvedMemory[0]?.call).toMatchObject({ resourceId: 'company:c:person:p', sessionId: 'session-1' });
+  }, 30_000);
 });

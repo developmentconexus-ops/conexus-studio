@@ -1,15 +1,13 @@
 import type { Agent } from '@mastra/core/agent';
 import type { AgentController } from '@mastra/core/agent-controller';
 import type { Workspace } from '@mastra/core/workspace';
-import type { MastraModelConfig } from '@mastra/core/llm';
-import type { BuilderModelConfig, ConexusHarnessConfig, HarnessMastraArgs } from './config.js';
+import type { ConexusHarnessConfig, HarnessMastraArgs } from './config.js';
 import { createBuilder } from './agents/builder/controller.js';
 import { createBuilderMemory } from './agents/builder/memory.js';
+import { withModelDefaults } from './agents/builder/model.js';
 import { createBuilderWorkspace } from './agents/builder/workspace.js';
 import { AppSandboxes } from './sandboxes.js';
 
-const DEFAULT_BUILDER_MODEL: BuilderModelConfig = { defaultId: 'anthropic/claude-sonnet-5-5' };
-const DEFAULT_MEMORY_MODEL: MastraModelConfig = 'anthropic/claude-haiku-5-5';
 const DEFAULT_PLANS_DIR = '.conexus/plans';
 
 interface Prepared {
@@ -33,10 +31,11 @@ export class ConexusHarness {
     if (this.prepared) throw new Error('ConexusHarness.prepare() runs once. Create a new ConexusHarness instead.');
 
     const { auth, model, tools, plansDir } = this.config;
-    const memory = createBuilderMemory(model?.memory ?? DEFAULT_MEMORY_MODEL);
+    const models = withModelDefaults(model);
+    const memory = createBuilderMemory(models);
     const workspace = createBuilderWorkspace(this.sandboxes);
     const { agent, controller } = createBuilder({
-      model: model?.builder ?? DEFAULT_BUILDER_MODEL,
+      models,
       memory,
       workspace,
       tools,

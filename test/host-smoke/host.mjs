@@ -11,7 +11,10 @@ const root = await mkdtemp(join(tmpdir(), 'host-smoke-'));
 
 try {
   const harness = new ConexusHarness({
-    model: { builder: { defaultId: () => 'anthropic/claude-sonnet-5-5' } },
+    model: {
+      defaultFor: () => 'anthropic/claude-sonnet-5-5',
+      memoryFor: () => ({ observer: 'anthropic/claude-haiku-5-5', reflector: 'anthropic/claude-haiku-5-5' }),
+    },
     sandbox: ({ appId }) => {
       const basePath = join(root, appId);
       return {

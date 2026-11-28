@@ -18,8 +18,8 @@ await harness.finalize();
 
 - `sandbox`: a fábrica da máquina de cada app. O host escolhe o provedor (a E2B). O pacote guarda uma máquina por app.
 - `auth`: o provedor de login do host. O pacote o põe em `server.auth` e em `studio.auth`.
-- `model`: opcional. `model.builder` é `{ defaultId, resolve? }` e `model.memory` é o modelo da memória (veja "O modelo de cada
-  conversa").
+- `model`: opcional. `{ defaultFor?, resolve?, memoryFor? }`, as três decisões do host sobre modelos (veja "O modelo de
+  cada conversa").
 - `tools`: ferramentas do host, como o `publish` que vem do Hub por MCP.
 - `plansDir`: a pasta dos planos, opcional. O padrão é `.conexus/plans`.
 
@@ -43,31 +43,51 @@ os três da instância. O pacote não entrega middleware, porque servidores como
 O Mastra grava o modelo escolhido em cada conversa (`currentModelId`, na thread), e a rota nativa
 `POST /api/agent-controller/builder/sessions/:sid/model` o troca. Mas o controller não aplica essa escolha ao agente: ele
 só a põe em `requestContext.get('controller').session.modelId`. O pacote faz essa leitura, uma vez, na função `model` do
-agente. O host nunca precisa conhecer essa chave.
+agente. O host nunca precisa conhecer essa chave. O segredo nunca entra no `requestContext`: ele só existe no retorno de
+`resolve`.
 
 ```ts
 new ConexusHarness({
   sandbox,
   model: {
-    builder: {
-      // Modelo de uma conversa sem escolha. Texto, ou função por empresa e pessoa (lê o seu requestContext).
-      defaultId: ({ requestContext }) => modeloPadraoDe(requestContext),
-      // Id vira modelo e chave. Opcional: sem ela o id vai ao roteador e a chave sai do ambiente.
-      resolve: (modelId, { requestContext }) => ({ id: modelId, apiKey: chaveDe(requestContext) }),
-    },
+    // Uma vez por conversa, quando ela nasce. O host lê o próprio resourceId (empresa e pessoa).
+    defaultFor: async ({ resourceId, sessionId }) => modeloInicialDe(resourceId),
+    // A cada chamada ao modelo (Construtor e memória). Id vira modelo e chave. Lança ModelNotAllowedError se não vale mais.
+    resolve: async (modelId, { resourceId, sessionId, requestContext }) => ({ id: modelId, apiKey: await chaveDe(resourceId, modelId) }),
+    // A cada observação e reflexão da memória. O host responde do próprio cache.
+    memoryFor: async ({ resourceId }) => ({ observer: modeloDaMemoriaDe(resourceId), reflector: modeloDaMemoriaDe(resourceId) }),
   },
 });
 ```
 
-- Conversa com escolha: o turno seguinte à troca já roda no modelo novo.
-- Conversa sem escolha: roda em `defaultId`, perguntado a cada turno. Os modos não têm `defaultModelId`, porque ele só
-  aceita texto fixo e alimenta `currentModelId` (o Mastra o grava na thread), então não saberia de quem é a conversa. Sem
-  escolha, `session.modelId` fica `''` (o core documenta esse estado) e o padrão do host vale. Quem quiser mostrar o
-  padrão na tela o pergunta ao próprio host.
-- Conversa nova na mesma sessão volta ao padrão do host, e não herda a escolha da anterior.
-- `resolve` também é o `resolveSubagentModel` do controller. Ela é síncrona porque o core não espera esse resolvedor.
-- O modelo da memória continua único e fixo. Chave por empresa na memória fica para depois.
-- A lista de modelos permitidos e a validação do id que a rota de troca recebe são do host. A rota aceita qualquer texto.
+Os três campos são opcionais. Sem eles: Sonnet 5.5 no Construtor, Haiku 5.5 na memória, e o id vai direto ao roteador do
+Mastra, com a chave do ambiente.
+
+- **Conversa nova.** O pacote liga `controller.onSessionCreated(..., { blocking: true })`. Se a sessão nasce sem modelo
+  gravado, ele chama `defaultFor` uma vez e grava o resultado com `session.model.switch`. O padrão fica na thread, então
+  o `GET` nativo da sessão já o mostra logo depois do `createSession`. Uma thread nova na mesma sessão recebe o padrão
+  pelo evento `thread_created`, só com API pública. Os modos não têm `defaultModelId`: o core só distingue "sem escolha"
+  de "padrão fixo" quando ele é vazio (`hasSelection()`).
+- **Retomada.** Conversa com escolha gravada não é tocada, e `defaultFor` não roda de novo. Trocar o padrão da empresa
+  não muda as conversas que já existem.
+- **Troca.** O turno seguinte à troca (pela rota nativa ou por `session.model.switch`) já roda no modelo novo.
+- **Falha fechada.** O core engole o erro do gancho. Se `defaultFor` falhar, a conversa fica sem modelo e o primeiro turno
+  falha com `ModelNotSeededError`, em vez de rodar num modelo escondido. O host pode conferir `hasSelection()` depois do
+  `createSession` e recusar a abertura. O mesmo erro vale fora de um turno do controller (por exemplo, `agent.listTools`
+  sem a entrada `controller`).
+- **Modelo que não vale mais.** `resolve` é a autoridade da lista permitida. Se o modelo gravado deixou de ser permitido
+  (conta removida), ela lança `ModelNotAllowedError` e o turno falha com esse erro, para a UI abrir o seletor. Nunca cai
+  calada em outro modelo. A rota de troca aceita qualquer texto: o host confere a lista antes, como atalho.
+- **Thread nova na mesma sessão.** O padrão chega de forma assíncrona (`defaultFor` pode ser async). Quem cria a thread e
+  fala logo em seguida pode ver `ModelNotSeededError`; espere o evento `model_changed` ou `session.model.hasSelection()`.
+  O Hub cria uma thread por sessão, então só o gancho de `onSessionCreated` roda lá.
+- **Memória.** Observer e reflector são funções (`observation.model` e `reflection.model`). Cada uma lê o dono da chamada,
+  pede `memoryFor(owner)`, pega o seu papel e passa pelo mesmo `resolve`, então usa a conta da empresa e respeita a lista
+  permitida. Diferente do modelo da conversa, não é congelado: se a empresa trocar, a próxima observação já usa o novo. O
+  seletor de modelo de memória por thread do controller (`omConfig`) continua desligado. Se a chamada não trouxer a
+  entrada `controller`, o dono sai de `MASTRA_RESOURCE_ID_KEY` (com `sessionId` vazio).
+- A lista de modelos do seletor e a validação do id que a rota de troca recebe são do host.
+- Sem subagentes por enquanto, então o pacote não liga `resolveSubagentModel`. Quando houver, ele é síncrono no core.
 
 ## O Studio é uma entrada de teste
 

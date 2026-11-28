@@ -20,7 +20,6 @@ const harness = new ConexusHarness({
     });
     return { sandbox, filesystem: sandbox.filesystem };
   },
-  model: { builder: { defaultId: 'anthropic/claude-sonnet-5-5' } },
   tools: { publish: studioPublishTool },
   // The Studio plan card route only reads plans from .mastracode/plans (@mastra/server plans-DGC1grMp.js PLANS_DIRECTORY, isPlanPath).
   plansDir: '.mastracode/plans',
