@@ -95,6 +95,10 @@ new ConexusHarness({
     as tentativas e respeitando `Retry-After` (até 30 s), antes de passar à seguinte. O pacote não muda isso.
   - Erro ao abrir o stream, ou stream que cai, passa à entrada seguinte. Um chunk `error` que o provedor manda no meio
     do stream chega ao chamador sem trocar de entrada (medido com modelos de teste).
+- **Cache de prompt.** O Construtor pede à Anthropic o cache de 1 hora em todo turno (`cacheControl` com `ttl: '1h'` em
+  `providerOptions.anthropic`), e a memória só ativa observações guardadas depois de 1 hora parada com a Anthropic
+  (`activateAfterIdle: { default: 'auto', anthropic: '1h' }`). Entradas de outros provedores numa lista ignoram o campo
+  `anthropic`. A troca entre plan e build ainda custa uma escrita de cache, porque a lista de ferramentas muda.
 - **Id recusado não roda.** `resolve` é a autoridade da lista permitida. Se ela lança erro, o turno falha com esse mesmo
   erro, e nada cai em outro modelo. Se `defaultFor` falhar, a conversa fica sem modelo e o primeiro turno falha. O host
   pode conferir `session.model.hasSelection()` depois do `createSession`.

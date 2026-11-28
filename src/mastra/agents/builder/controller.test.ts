@@ -6,7 +6,7 @@ import { InMemoryStore } from '@mastra/core/storage';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import { createMockModel } from '@mastra/core/test-utils/llm-mock';
 import { createTool, submitPlanTool } from '@mastra/core/tools';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { HARNESS_APP_ID_KEY } from '../../config.js';
 import type { ConversationOwner, HarnessModels, ModelCall } from '../../config.js';
@@ -454,4 +454,60 @@ describe('model per conversation', () => {
     expect(resolvedMemory[0]?.modelId).toBe('host/observer');
     expect(resolvedMemory[0]?.call.resourceId).toBe('company:c1:person:p1');
   }, 30_000);
+});
+
+describe('prompt cache of the builder', () => {
+  type AnthropicBody = { model: string; stream?: boolean; cache_control?: unknown };
+
+  const MODEL_ID = 'claude-sonnet-5-5';
+  const ANSWER = [
+    { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: MODEL_ID, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ok' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } },
+    { type: 'message_stop' },
+  ];
+
+  function anthropicAnswer(body: AnthropicBody): Response {
+    if (body.stream) {
+      const events = ANSWER.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+      return new Response(events, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    }
+    const message = { id: 'msg_2', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: 'Title' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 5, output_tokens: 1 } };
+    return Response.json(message);
+  }
+
+  function interceptAnthropic(): AnthropicBody[] {
+    const sent: AnthropicBody[] = [];
+    const realFetch = globalThis.fetch;
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-fake-local-proof');
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('api.anthropic.com')) return realFetch(input, init);
+      const body = JSON.parse(String(init?.body ?? '{}')) as AnthropicBody;
+      sent.push(body);
+      return anthropicAnswer(body);
+    });
+    return sent;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it.each(['build', 'plan'])('asks Anthropic to cache the prompt for one hour in %s mode', async (modeId) => {
+    const sent = interceptAnthropic();
+    const controller = await bootHarness();
+    const requestContext = requestContextFor('a');
+    const session = await controller.createSession({ requestContext });
+    await session.mode.switch({ modeId });
+
+    await session.sendMessage({ content: 'hello', requestContext });
+
+    const turn = sent.filter((body) => body.model === MODEL_ID);
+    expect(turn.length).toBeGreaterThan(0);
+    for (const body of turn) expect(body.cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+  });
 });

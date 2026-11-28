@@ -32,7 +32,12 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
     workspace: deps.workspace,
     defaultOptions: {
       maxSteps: MAX_STEPS,
-      providerOptions: { anthropic: { thinking: { type: 'adaptive', blockBinding: { prefixMismatchBehavior: 'drop_block' } } } },
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: 'ephemeral', ttl: '1h' },
+          thinking: { type: 'adaptive', blockBinding: { prefixMismatchBehavior: 'drop_block' } },
+        },
+      },
     },
   });
   const controller = new AgentController({
