@@ -1,7 +1,9 @@
 import type { AgentControllerMode } from '@mastra/core/agent-controller';
 import { WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { MastraModelConfig } from '@mastra/core/llm';
-import { BUILD_MODE_ID, PLAN_MODE_ID } from './ids.js';
+import { BUILD_MODE_ID } from './build.js';
+
+export const PLAN_MODE_ID = 'plan';
 
 export const PLAN_MODE_AVAILABLE_TOOLS: string[] = [
   WORKSPACE_TOOLS.FILESYSTEM.READ_FILE,

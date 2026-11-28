@@ -2,7 +2,7 @@ import { Mastra } from '@mastra/core/mastra';
 import { E2BSandbox } from '@mastra/e2b';
 import { MastraStorageExporter, Observability } from '@mastra/observability';
 import { PostgresStoreVNext } from '@mastra/pg';
-import { ConexusHarness, HARNESS_APP_ID_KEY } from '../index.js';
+import { ConexusHarness, HARNESS_APP_ID_KEY } from '../src/index.js';
 import { studioPublishTool } from './studio-publish.js';
 
 function requiredEnv(name: string): string {

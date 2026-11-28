@@ -25,7 +25,7 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "dev": "mastra dev",
+    "dev": "mastra dev --dir studio",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

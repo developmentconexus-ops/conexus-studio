@@ -11,5 +11,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "test", "e2b", "vitest.config.ts"]
+  "include": ["src", "studio", "test", "e2b", "vitest.config.ts"]
 }
