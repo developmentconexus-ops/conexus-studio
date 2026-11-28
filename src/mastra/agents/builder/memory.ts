@@ -1,10 +1,10 @@
-import type { MastraModelConfig } from '@mastra/core/llm';
 import type { DynamicArgument } from '@mastra/core/types';
 import { Memory } from '@mastra/memory';
+import type { HarnessModel } from '../../config.js';
 
 export function createBuilderMemory(models: {
-  observer: DynamicArgument<MastraModelConfig>;
-  reflector: DynamicArgument<MastraModelConfig>;
+  observer: DynamicArgument<HarnessModel>;
+  reflector: DynamicArgument<HarnessModel>;
 }): Memory {
   return new Memory({
     options: {

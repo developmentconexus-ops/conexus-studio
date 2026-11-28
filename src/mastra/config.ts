@@ -1,4 +1,4 @@
-import type { ToolsInput } from '@mastra/core/agent';
+import type { ModelWithRetries, ToolsInput } from '@mastra/core/agent';
 import type { MastraModelConfig } from '@mastra/core/llm';
 import type { Mastra } from '@mastra/core/mastra';
 import type { RequestContext } from '@mastra/core/request-context';
@@ -39,6 +39,14 @@ export interface ModelCall extends ModelOwner {
   readonly requestContext: RequestContext;
 }
 
+/**
+ * O que o `resolve` do host devolve: um modelo, ou a lista nativa do Agent (`ModelWithRetries[]`), usada para girar entre
+ * contas. O pacote entrega o valor ao Agent sem mudar. Cada entrada de uma lista precisa de `id` único (duas contas do
+ * mesmo modelo têm o mesmo `modelId`, e o Mastra acha a entrada ativa pelo id) e deve abrir a credencial só ao enviar,
+ * porque o Mastra monta todas as entradas antes de tentar a primeira.
+ */
+export type HarnessModel = MastraModelConfig | ModelWithRetries[];
+
 export interface MemoryModels {
   readonly observer: ModelId;
   readonly reflector: ModelId;
@@ -48,7 +56,7 @@ export interface HarnessModels {
   /** Modelo de uma conversa nova. Padrão: "anthropic/claude-sonnet-5-5". */
   defaultFor?: (owner: ConversationOwner) => ModelId | Promise<ModelId>;
   /** Id para modelo e chave. Lança erro se o id não for permitido. Padrão: o próprio id, que vai ao roteador. */
-  resolve?: (modelId: ModelId, call: ModelCall) => MastraModelConfig | Promise<MastraModelConfig>;
+  resolve?: (modelId: ModelId, call: ModelCall) => HarnessModel | Promise<HarnessModel>;
   /** Modelos da memória do dono. Padrão: "anthropic/claude-haiku-5-5" nos dois. */
   memoryFor?: (owner: ModelOwner) => MemoryModels | Promise<MemoryModels>;
 }

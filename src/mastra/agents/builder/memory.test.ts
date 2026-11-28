@@ -1,14 +1,15 @@
+import type { ModelWithRetries } from '@mastra/core/agent';
 import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { InMemoryStore } from '@mastra/core/storage';
-import type { MastraModelConfig } from '@mastra/core/llm';
 import type { DynamicArgument } from '@mastra/core/types';
 import { describe, expect, it } from 'vitest';
+import type { HarnessModel } from '../../config.js';
 import { createBuilderMemory } from './memory.js';
 import { memoryModels } from './model.js';
 
 const noModels = { resolve: (modelId: string) => modelId, memoryFor: () => ({ observer: 'o', reflector: 'r' }) };
 
-async function ask(model: DynamicArgument<MastraModelConfig>, requestContext: RequestContext): Promise<MastraModelConfig> {
+async function ask(model: DynamicArgument<HarnessModel>, requestContext: RequestContext): Promise<HarnessModel> {
   if (typeof model !== 'function') throw new Error('expected a model function');
   return model({ requestContext });
 }
@@ -59,6 +60,18 @@ describe('memoryModels', () => {
       'observer-of-company:c1:person:p1',
       'reflector-of-company:c1:person:p1',
     ]);
+  });
+
+  it('hands a list of models to the observer and the reflector as the host built it', async () => {
+    const accounts: ModelWithRetries[] = [
+      { id: 'account-1', model: 'host/model' },
+      { id: 'account-2', model: 'host/model' },
+    ];
+    const { observer, reflector } = memoryModels({ ...noModels, resolve: () => accounts });
+    const requestContext = inACall('company:c1:person:p1');
+
+    expect(await ask(observer, requestContext)).toBe(accounts);
+    expect(await ask(reflector, requestContext)).toBe(accounts);
   });
 
   it('fails when the call has no owner, instead of picking a model for someone', async () => {

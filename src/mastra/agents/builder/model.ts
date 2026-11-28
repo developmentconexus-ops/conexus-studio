@@ -1,9 +1,8 @@
 import type { AgentController, AgentControllerRequestContext, Session } from '@mastra/core/agent-controller';
-import type { MastraModelConfig } from '@mastra/core/llm';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import type { RequestContext } from '@mastra/core/request-context';
 import type { DynamicArgument } from '@mastra/core/types';
-import type { HarnessModels, ModelId } from '../../config.js';
+import type { HarnessModel, HarnessModels, ModelId } from '../../config.js';
 
 type Models = Required<HarnessModels>;
 
@@ -15,7 +14,7 @@ function ownerOf(requestContext: RequestContext): { resourceId: string } {
   return { resourceId };
 }
 
-export function builderModel({ resolve }: Pick<Models, 'resolve'>): DynamicArgument<MastraModelConfig> {
+export function builderModel({ resolve }: Pick<Models, 'resolve'>): DynamicArgument<HarnessModel> {
   return async ({ requestContext }: { requestContext: RequestContext }) => {
     const controller: AgentControllerRequestContext | undefined = requestContext.get('controller');
     const modelId = controller?.session.modelId;
@@ -25,10 +24,10 @@ export function builderModel({ resolve }: Pick<Models, 'resolve'>): DynamicArgum
 }
 
 export function memoryModels({ resolve, memoryFor }: Pick<Models, 'resolve' | 'memoryFor'>): {
-  observer: DynamicArgument<MastraModelConfig>;
-  reflector: DynamicArgument<MastraModelConfig>;
+  observer: DynamicArgument<HarnessModel>;
+  reflector: DynamicArgument<HarnessModel>;
 } {
-  const modelOf = (role: 'observer' | 'reflector'): DynamicArgument<MastraModelConfig> =>
+  const modelOf = (role: 'observer' | 'reflector'): DynamicArgument<HarnessModel> =>
     async ({ requestContext }: { requestContext: RequestContext }) => {
       const { resourceId } = ownerOf(requestContext);
       const models = await memoryFor({ resourceId });

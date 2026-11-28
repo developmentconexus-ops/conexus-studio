@@ -12,6 +12,8 @@ Regras para quem trabalha neste repositório. O contexto e a árvore estão no `
    descoberta por arquivos do `mastra dev`.
 5. **Modelos.** O Construtor usa por padrão `anthropic/claude-sonnet-5-5` e a memória usa por padrão
    `anthropic/claude-haiku-5-5`. O host pode trocar os dois por empresa, em `model`.
+   `model.resolve` devolve um modelo ou a lista nativa `ModelWithRetries[]` (rodízio de contas), passada ao Agent sem
+   mudar.
 6. **O pacote não escolhe o banco, a observabilidade, o logger, a máquina nem o login.** Tudo isso vem do host.
 7. **Antes de cada commit**, rode `npm run check`. Teste testa comportamento, não implementação.
 8. **Nenhum segredo, dado de empresa ou caminho de máquina em commit.** O repositório é público.

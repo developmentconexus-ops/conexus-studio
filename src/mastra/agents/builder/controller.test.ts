@@ -1,3 +1,4 @@
+import type { ModelWithRetries } from '@mastra/core/agent';
 import type { AgentController } from '@mastra/core/agent-controller';
 import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY, RequestContext } from '@mastra/core/request-context';
@@ -366,6 +367,59 @@ describe('model per conversation', () => {
       expect(call.resourceId).toBe('company:c1:person:p1');
       expect(call.requestContext.get(HARNESS_APP_ID_KEY)).toBe('a');
     }
+  });
+
+  describe('rotating accounts with a list of models', () => {
+    class RateLimited extends Error {
+      readonly statusCode = 429;
+      readonly isRetryable = true;
+    }
+
+    function account(id: string, behavior: 'serves' | 'rate-limited', calls: string[]): ModelWithRetries {
+      const model = createMockModel({ mockText: `served by ${id}`, version: 'v2', spyStream: () => calls.push(id) });
+      Object.defineProperty(model, 'provider', { value: 'anthropic' });
+      if (behavior === 'rate-limited') {
+        model.doStream = async () => {
+          calls.push(id);
+          throw new RateLimited('429 too many requests');
+        };
+      }
+      return { id, model, maxRetries: 0 };
+    }
+
+    async function turnOn(accounts: ModelWithRetries[]): Promise<string> {
+      const controller = await bootHarness({ defaultFor: () => 'host/default', resolve: () => accounts });
+      const requestContext = requestContextFor('a');
+      const session = await controller.createSession({ requestContext });
+      const updates: string[] = [];
+      session.subscribe((event) => {
+        if (event.type === 'message_update') updates.push(JSON.stringify(event));
+      });
+      await session.sendMessage({ content: 'hello', requestContext });
+      return updates.join('\n');
+    }
+
+    it('serves the turn from the next account when the first answers 429, and leaves the third alone', async () => {
+      const calls: string[] = [];
+
+      const transcript = await turnOn([
+        account('account-1', 'rate-limited', calls),
+        account('account-2', 'serves', calls),
+        account('account-3', 'serves', calls),
+      ]);
+
+      expect(transcript).toContain('served by account-2');
+      expect(calls).toContain('account-1');
+      expect(calls).not.toContain('account-3');
+    }, 30_000);
+
+    it('does not touch the next account while the first one serves', async () => {
+      const calls: string[] = [];
+
+      await turnOn([account('account-1', 'serves', calls), account('account-2', 'serves', calls)]);
+
+      expect(calls).toEqual(['account-1']);
+    });
   });
 
   it('starts on Sonnet 5.5 when the host gives no model config', async () => {
