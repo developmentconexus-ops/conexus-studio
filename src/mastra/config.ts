@@ -22,10 +22,29 @@ export type HarnessTools =
   | ToolsInput
   | ((args: { requestContext: RequestContext }) => ToolsInput | Promise<ToolsInput>);
 
+/** Argumentos que o pacote passa às funções de modelo do host. */
+export interface ModelArgs {
+  requestContext: RequestContext;
+}
+
+/** Qual modelo o Construtor usa. O host decide o padrão e como um id vira modelo (e chave). */
+export interface BuilderModelConfig {
+  /**
+   * Modelo de uma conversa que ainda não tem escolha, por empresa ou pessoa se o host quiser. Função: roda a cada turno
+   * dessas conversas, com o `requestContext` do turno.
+   */
+  defaultId: string | ((args: ModelArgs) => string | Promise<string>);
+  /**
+   * Transforma o id (o da conversa ou o padrão) no modelo com a chave certa. Síncrona porque o core não espera o
+   * `resolveSubagentModel`. Sem ela, o id vai ao roteador do Mastra e a chave sai do ambiente.
+   */
+  resolve?: (modelId: string, args: ModelArgs) => MastraModelConfig;
+}
+
 export interface HarnessModels {
-  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-sonnet-5-5". */
-  builder?: MastraModelConfig;
-  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-haiku-5-5". */
+  /** Padrão: { defaultId: "anthropic/claude-sonnet-5-5" }. */
+  builder?: BuilderModelConfig;
+  /** Id do gateway ou modelo do AI SDK. Fixo para todos. Padrão: "anthropic/claude-haiku-5-5". */
   memory?: MastraModelConfig;
 }
 

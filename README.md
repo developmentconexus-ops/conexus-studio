@@ -18,7 +18,8 @@ await harness.finalize();
 
 - `sandbox`: a fábrica da máquina de cada app. O host escolhe o provedor (a E2B). O pacote guarda uma máquina por app.
 - `auth`: o provedor de login do host. O pacote o põe em `server.auth` e em `studio.auth`.
-- `model`: os modelos do Construtor e da memória, opcional.
+- `model`: opcional. `model.builder` é `{ defaultId, resolve? }` e `model.memory` é o modelo da memória (veja "O modelo de cada
+  conversa").
 - `tools`: ferramentas do host, como o `publish` que vem do Hub por MCP.
 - `plansDir`: a pasta dos planos, opcional. O padrão é `.conexus/plans`.
 
@@ -35,7 +36,38 @@ os três da instância. O pacote não entrega middleware, porque servidores como
 - O agente testa o app dentro da máquina, com o `agent-browser` e o Chromium do template e a skill `testar-app`.
 - O plano mora na pasta `plansDir`. O cartão de aprovação nativo do Studio só lê `.mastracode/plans/`, então a
   entrada do Studio passa essa pasta.
-- Observational Memory em Haiku. O Construtor roda em Sonnet.
+- Observational Memory em Haiku. O Construtor roda em Sonnet, se o host não disser outro modelo.
+
+## O modelo de cada conversa
+
+O Mastra grava o modelo escolhido em cada conversa (`currentModelId`, na thread), e a rota nativa
+`POST /api/agent-controller/builder/sessions/:sid/model` o troca. Mas o controller não aplica essa escolha ao agente: ele
+só a põe em `requestContext.get('controller').session.modelId`. O pacote faz essa leitura, uma vez, na função `model` do
+agente. O host nunca precisa conhecer essa chave.
+
+```ts
+new ConexusHarness({
+  sandbox,
+  model: {
+    builder: {
+      // Modelo de uma conversa sem escolha. Texto, ou função por empresa e pessoa (lê o seu requestContext).
+      defaultId: ({ requestContext }) => modeloPadraoDe(requestContext),
+      // Id vira modelo e chave. Opcional: sem ela o id vai ao roteador e a chave sai do ambiente.
+      resolve: (modelId, { requestContext }) => ({ id: modelId, apiKey: chaveDe(requestContext) }),
+    },
+  },
+});
+```
+
+- Conversa com escolha: o turno seguinte à troca já roda no modelo novo.
+- Conversa sem escolha: roda em `defaultId`, perguntado a cada turno. Os modos não têm `defaultModelId`, porque ele só
+  aceita texto fixo e alimenta `currentModelId` (o Mastra o grava na thread), então não saberia de quem é a conversa. Sem
+  escolha, `session.modelId` fica `''` (o core documenta esse estado) e o padrão do host vale. Quem quiser mostrar o
+  padrão na tela o pergunta ao próprio host.
+- Conversa nova na mesma sessão volta ao padrão do host, e não herda a escolha da anterior.
+- `resolve` também é o `resolveSubagentModel` do controller. Ela é síncrona porque o core não espera esse resolvedor.
+- O modelo da memória continua único e fixo. Chave por empresa na memória fica para depois.
+- A lista de modelos permitidos e a validação do id que a rota de troca recebe são do host. A rota aceita qualquer texto.
 
 ## O Studio é uma entrada de teste
 

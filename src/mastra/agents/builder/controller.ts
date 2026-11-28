@@ -3,9 +3,9 @@ import { AgentController } from '@mastra/core/agent-controller';
 import { createCodingAgent } from '@mastra/core/coding-agent';
 import type { Workspace } from '@mastra/core/workspace';
 import type { Memory } from '@mastra/memory';
-import type { MastraModelConfig } from '@mastra/core/llm';
-import type { HarnessTools } from '../../config.js';
+import type { BuilderModelConfig, HarnessTools } from '../../config.js';
 import { BUILD_MODE_ID, createBuilderModes } from './modes/index.js';
+import { createBuilderModel } from './model.js';
 import { instructions } from './prompt.js';
 import { CONTROLLER_BUILTIN_TOOL_IDS, builderTools } from './tools/index.js';
 
@@ -14,7 +14,7 @@ export const BUILDER_ID = 'builder';
 const MAX_STEPS = 1_000;
 
 export interface BuilderDeps {
-  model: MastraModelConfig;
+  model: BuilderModelConfig;
   memory: Memory;
   workspace: Workspace;
   tools?: HarnessTools;
@@ -22,11 +22,12 @@ export interface BuilderDeps {
 }
 
 export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: AgentController } {
+  const builderModel = createBuilderModel(deps.model);
   const agent = createCodingAgent({
     id: BUILDER_ID,
     name: 'Builder',
     instructions,
-    model: deps.model,
+    model: builderModel.model,
     tools: builderTools(deps.tools),
     memory: deps.memory,
     workspace: deps.workspace,
@@ -38,8 +39,9 @@ export function createBuilder(deps: BuilderDeps): { agent: Agent; controller: Ag
   const controller = new AgentController({
     id: BUILDER_ID,
     agent,
-    modes: createBuilderModes({ model: deps.model, plansDir: deps.plansDir }),
+    modes: createBuilderModes({ plansDir: deps.plansDir }),
     defaultModeId: BUILD_MODE_ID,
+    resolveSubagentModel: builderModel.resolveSubagentModel,
     memory: deps.memory,
     workspace: deps.workspace,
     initialState: { yolo: true },

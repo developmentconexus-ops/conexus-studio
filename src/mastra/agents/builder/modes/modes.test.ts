@@ -4,7 +4,7 @@ import { APP_DIR } from './build.js';
 import { BUILD_MODE_ID, PLAN_MODE_ID, createBuilderModes } from './index.js';
 import { PLAN_MODE_AVAILABLE_TOOLS } from './plan.js';
 
-const modes = createBuilderModes({ model: 'anthropic/claude-sonnet-5-5', plansDir: '.conexus/plans' });
+const modes = createBuilderModes({ plansDir: '.conexus/plans' });
 const plan = modes.find((mode) => mode.id === PLAN_MODE_ID);
 const build = modes.find((mode) => mode.id === BUILD_MODE_ID);
 
@@ -32,7 +32,7 @@ describe('builder modes', () => {
 
   it('tells the model to write the plan in the plans directory it is given', () => {
     expect(plan?.instructions).toContain('.conexus/plans/<slug>.md');
-    const custom = createBuilderModes({ model: 'anthropic/claude-sonnet-5-5', plansDir: 'custom/plans' }).find(
+    const custom = createBuilderModes({ plansDir: 'custom/plans' }).find(
       (mode) => mode.id === PLAN_MODE_ID,
     );
     expect(custom?.instructions).toContain('custom/plans/<slug>.md');
@@ -43,7 +43,7 @@ describe('builder modes', () => {
     expect(build?.instructions).toContain(APP_DIR);
   });
 
-  it('seeds both modes with the model it receives', () => {
-    expect(modes.map((mode) => mode.defaultModelId)).toEqual(['anthropic/claude-sonnet-5-5', 'anthropic/claude-sonnet-5-5']);
+  it('leaves the model out of both modes so a new conversation starts on the host default', () => {
+    expect(modes.map((mode) => mode.defaultModelId)).toEqual([undefined, undefined]);
   });
 });
