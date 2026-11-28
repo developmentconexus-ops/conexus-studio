@@ -16,6 +16,7 @@ export function createBuilderMemory(models: {
           messageTokens: 70_000,
           threadTitle: true,
           observeAttachments: 'auto',
+          activateAfterIdle: { default: 'auto', anthropic: '1h' },
         },
         reflection: {
           model: models.reflector,
