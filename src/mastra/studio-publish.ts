@@ -1,3 +1,4 @@
+import { RequestContext } from '@mastra/core/request-context';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
@@ -18,7 +19,10 @@ export const studioPublishTool = createTool({
     message: z.string(),
   }),
   execute: async ({ name, directory }, context) => {
-    const entries = (await context.workspace?.filesystem?.readdir(directory)) ?? [];
+    const filesystem = await context.workspace?.resolveFilesystem({
+      requestContext: context.requestContext ?? new RequestContext(),
+    });
+    const entries = (await filesystem?.readdir(directory)) ?? [];
     return {
       published: false,
       dryRun: true,
