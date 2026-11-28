@@ -1,6 +1,8 @@
 import { E2BSandbox } from '@mastra/e2b';
 import { Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { WorkspaceToolHookContext } from '@mastra/core/workspace';
+import { parseMemoryRequestContext } from '@mastra/core/memory';
+import type { RequestContext } from '@mastra/core/request-context';
 import { z } from 'zod';
 import { PLAN_MODE_ID, PLANS_DIR, isPlanFilePath } from './modes.js';
 
@@ -60,8 +62,9 @@ function createConversationWorkspace(conversationId: string): Workspace {
   });
 }
 
-export function conversationWorkspace({ requestContext }: { requestContext: unknown }): Workspace {
-  const conversationId = readController(requestContext)?.threadId ?? STUDIO_TEST_CONVERSATION;
+export function conversationWorkspace({ requestContext }: { requestContext: RequestContext }): Workspace {
+  const conversationId =
+    readController(requestContext)?.threadId ?? parseMemoryRequestContext(requestContext)?.thread?.id ?? STUDIO_TEST_CONVERSATION;
   const existing = workspaces.get(conversationId);
   if (existing) return existing;
   const created = createConversationWorkspace(conversationId);

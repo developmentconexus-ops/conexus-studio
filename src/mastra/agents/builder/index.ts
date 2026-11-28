@@ -6,7 +6,7 @@ import { MODEL_ID, BUILD_MODE_ID, modes } from './modes.js';
 import { conversationWorkspace } from './sandbox.js';
 import { tools } from './tools.js';
 
-const MAX_STEPS = 100;
+const MAX_STEPS = 1_000;
 
 export const builderAgent = createCodingAgent({
   id: 'builder',
