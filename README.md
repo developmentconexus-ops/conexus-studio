@@ -12,7 +12,7 @@ npm run dev            # Studio em http://localhost:4111, API em /api
 
 ## Pedir um app no chat do Studio
 
-O chat do Studio fala com o agente direto, sem o controller. O Construtor planeja pelas instruções: escreve o plano em `/home/user/plans`, mostra no chat e espera a aprovação antes de construir. Quando o app roda, devolve o link da E2B (`preview_url`). Os modos plan e build só existem pelas rotas do controller.
+O chat do Studio fala com o agente direto, sem o controller. O Construtor trabalha como o modo build do Mastra Code: tarefa simples faz direto, tarefa não trivial usa a lista de tarefas, um passo por vez, e pergunta quando há caminhos que mudam o escopo. Quando o app roda, devolve o link da E2B (`preview_url`). O modo plan só existe pelas rotas do controller e entra quando a pessoa pede.
 
 As rotas nativas do `AgentController` ficam em `/api/agent-controller/builder/...` e a especificação completa em `/api/openapi.json`.
 
@@ -22,7 +22,7 @@ As rotas nativas do `AgentController` ficam em `/api/agent-controller/builder/..
 src/mastra/
   agents/builder/
     index.ts      createCodingAgent e AgentController
-    prompt.ts     instruções do agente (plano, aprovação no chat, link do app)
+    prompt.ts     instruções do agente (Working Style do build do Mastra Code, link do app)
     modes.ts      modos plan (availableTools) e build
     tools.ts      preview_url (link do app na E2B) e publish, em ensaio
     sandbox.ts    máquina E2B e trava de escrita de arquivo de plano
