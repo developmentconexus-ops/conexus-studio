@@ -15,7 +15,7 @@ const [pack] = Array.isArray(report) ? report : Object.values(report);
 console.log(pack.files.map((file) => file.path).join('\n'));
 ")"
 echo "$files"
-if echo "$files" | grep -Eq '^(src/|e2b/|\.env|dist/mastra/index\.js$)'; then
+if echo "$files" | grep -Eq '^(src/|studio/|e2b/|\.env)'; then
   echo "tarball has files that must not be published" >&2
   exit 1
 fi

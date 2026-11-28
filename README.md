@@ -39,7 +39,7 @@ os três da instância. O pacote não entrega middleware, porque servidores como
 
 ## O Studio é uma entrada de teste
 
-`src/mastra/index.ts` é um host como outro qualquer. Ele usa a mesma classe, com a E2B, um Postgres
+`studio/index.ts` é um host como outro qualquer. Ele usa a mesma classe, com a E2B, um Postgres
 (`PostgresStoreVNext`) e um middleware que escolhe o app de teste. Ele nunca é publicado. Validar no Studio é
 validar o caminho que o Conexus vai usar.
 
@@ -64,12 +64,12 @@ docker exec harness-pg psql -U postgres -c "create database harness" -c "create 
 src/
   index.ts                 porta pública do pacote
   mastra/
-    index.ts               entrada do Studio (nunca publicada)
     harness.ts             ConexusHarness: prepare, finalize, shutdown
     config.ts              config e tipos públicos
     sandboxes.ts           uma máquina por app
     agents/builder/
       prompt.ts  modes/  tools/  controller.ts  workspace.ts  memory.ts
+studio/                    entrada do Studio, fora do pacote (nunca publicada)
 e2b/                       template da máquina e a skill testar-app (chega com a unidade P1)
 ```
 

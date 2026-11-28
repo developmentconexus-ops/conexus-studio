@@ -1,7 +1,7 @@
 import type { AgentControllerMode } from '@mastra/core/agent-controller';
 import type { MastraModelConfig } from '@mastra/core/llm';
-import { BUILD_MODE_ID } from './ids.js';
 
+export const BUILD_MODE_ID = 'build';
 export const APP_DIR = '/home/user/app';
 
 export function createBuildMode(model: MastraModelConfig): AgentControllerMode {
