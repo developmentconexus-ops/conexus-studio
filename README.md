@@ -18,7 +18,8 @@ await harness.finalize();
 
 - `sandbox`: a fábrica da máquina de cada app. O host escolhe o provedor (a E2B). O pacote guarda uma máquina por app.
 - `auth`: o provedor de login do host. O pacote o põe em `server.auth` e em `studio.auth`.
-- `model`: os modelos do Construtor e da memória, opcional.
+- `model`: opcional. `{ defaultFor?, resolve?, memoryFor? }`, as decisões do host sobre modelos (veja "O modelo de cada
+  conversa").
 - `tools`: ferramentas do host, como o `publish` que vem do Hub por MCP.
 - `plansDir`: a pasta dos planos, opcional. O padrão é `.conexus/plans`.
 
@@ -35,7 +36,49 @@ os três da instância. O pacote não entrega middleware, porque servidores como
 - O agente testa o app dentro da máquina, com o `agent-browser` e o Chromium do template e a skill `testar-app`.
 - O plano mora na pasta `plansDir`. O cartão de aprovação nativo do Studio só lê `.mastracode/plans/`, então a
   entrada do Studio passa essa pasta.
-- Observational Memory em Haiku. O Construtor roda em Sonnet.
+- Observational Memory em Haiku. O Construtor roda em Sonnet, se o host não disser outro modelo.
+
+## O modelo de cada conversa
+
+O Mastra grava o modelo escolhido em cada conversa (`currentModelId`, na thread), e a rota nativa
+`POST /api/agent-controller/builder/sessions/:sid/model` o troca. O controller não aplica essa escolha ao agente: ele
+só a põe em `requestContext.get('controller').session.modelId`. O pacote lê essa chave uma vez, na função `model` do
+agente. O host nunca precisa conhecê-la.
+
+O host passa até três funções em `model`, todas opcionais:
+
+```ts
+new ConexusHarness({
+  sandbox,
+  model: {
+    defaultFor: async ({ resourceId, sessionId }) => modeloInicialDe(resourceId),
+    resolve: async (modelId, { resourceId, requestContext }) => ({ id: modelId, apiKey: await chaveDe(resourceId, modelId) }),
+    memoryFor: async ({ resourceId }) => ({ observer: modeloDaMemoriaDe(resourceId), reflector: modeloDaMemoriaDe(resourceId) }),
+  },
+});
+```
+
+- **O host.** `defaultFor` diz o modelo de uma conversa nova. `resolve` junta o id com a credencial e recusa um id não
+  permitido, lançando erro. `memoryFor` diz os modelos da memória do dono. Sem elas: Sonnet 5.5 no Construtor, Haiku 5.5
+  na memória, e o id vai direto ao roteador do Mastra, com a chave do ambiente.
+- **O Studio.** Não passa nada. Ele recebe Sonnet 5.5, Haiku 5.5 e a chave do ambiente.
+- **A UI.** Lê o modelo da conversa pela rota nativa `GET` da sessão. Logo depois de criada, a sessão já tem o padrão
+  gravado, então a UI não vê mais `''`.
+- **A conversa fica no modelo com que nasceu.** O pacote chama `defaultFor` uma vez, quando a sessão nasce sem modelo
+  gravado (`onSessionCreated` bloqueante e `session.model.switch`). Se o padrão da empresa mudar, as conversas antigas
+  não mudam. A retomada com escolha gravada não é tocada.
+- **A troca vale no turno seguinte.** Pela rota nativa ou por `session.model.switch`.
+- **Id recusado não roda.** `resolve` é a autoridade da lista permitida. Se ela lança erro, o turno falha com esse mesmo
+  erro, e nada cai em outro modelo. Se `defaultFor` falhar, a conversa fica sem modelo e o primeiro turno falha. O host
+  pode conferir `session.model.hasSelection()` depois do `createSession`.
+- **Memória.** Observer e reflector pedem `memoryFor(owner)` a cada chamada e passam pelo mesmo `resolve`, então usam a
+  conta da empresa e respeitam a lista permitida. O dono vem de `MASTRA_RESOURCE_ID_KEY`. O seletor de modelo de memória
+  por thread do controller (`omConfig`) continua desligado.
+- **Thread nova na mesma sessão.** Ela recebe o padrão pelo evento `thread_created`. Se `defaultFor` devolve uma
+  Promise, o primeiro turno de uma thread criada e usada logo em seguida pode rodar antes do padrão chegar e falha, em vez
+  de rodar em modelo errado. O Hub abre uma thread por sessão, e o Studio usa um padrão em texto, então nenhum dos dois
+  passa por isso. Uma thread clonada nasce sem modelo e recebe o padrão, porque o core não copia `currentModelId`.
+- A lista de modelos do seletor e a validação do id que a rota de troca recebe são do host.
 
 ## O Studio é uma entrada de teste
 

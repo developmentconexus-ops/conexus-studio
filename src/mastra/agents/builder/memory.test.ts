@@ -1,24 +1,31 @@
+import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { InMemoryStore } from '@mastra/core/storage';
+import type { MastraModelConfig } from '@mastra/core/llm';
+import type { DynamicArgument } from '@mastra/core/types';
 import { describe, expect, it } from 'vitest';
 import { createBuilderMemory } from './memory.js';
+import { memoryModels } from './model.js';
+
+const noModels = { resolve: (modelId: string) => modelId, memoryFor: () => ({ observer: 'o', reflector: 'r' }) };
+
+async function ask(model: DynamicArgument<MastraModelConfig>, requestContext: RequestContext): Promise<MastraModelConfig> {
+  if (typeof model !== 'function') throw new Error('expected a model function');
+  return model({ requestContext });
+}
+
+function inACall(resourceId: string): RequestContext {
+  const requestContext = new RequestContext();
+  requestContext.set(MASTRA_RESOURCE_ID_KEY, resourceId);
+  return requestContext;
+}
 
 describe('createBuilderMemory', () => {
   it('has no storage of its own, so the Mastra instance of the host provides it', () => {
-    const memory = createBuilderMemory('anthropic/claude-haiku-5-5');
-
-    expect(memory.hasOwnStorage).toBe(false);
-  });
-
-  it('uses the model it receives for observational memory', () => {
-    const memory = createBuilderMemory('openai/gpt-test');
-
-    const observational = memory.getMergedThreadConfig().observationalMemory;
-
-    expect(observational).toMatchObject({ model: 'openai/gpt-test', scope: 'thread' });
+    expect(createBuilderMemory(memoryModels(noModels)).hasOwnStorage).toBe(false);
   });
 
   it('persists threads in a storage set after construction', async () => {
-    const memory = createBuilderMemory('anthropic/claude-haiku-5-5');
+    const memory = createBuilderMemory(memoryModels(noModels));
     const storage = new InMemoryStore();
     memory.setStorage(storage);
 
@@ -26,5 +33,37 @@ describe('createBuilderMemory', () => {
 
     const stored = await (await storage.getStore('memory'))?.getThreadById({ threadId: thread.id });
     expect(stored?.id).toBe(thread.id);
+  });
+});
+
+describe('memoryModels', () => {
+  it('gives each role the model the host chose for the owner, through the same resolve', async () => {
+    const asked: unknown[] = [];
+    const resolved: { modelId: string; resourceId: string }[] = [];
+    const { observer, reflector } = memoryModels({
+      memoryFor: (owner) => {
+        asked.push(owner);
+        return { observer: `observer-of-${owner.resourceId}`, reflector: `reflector-of-${owner.resourceId}` };
+      },
+      resolve: (modelId, { resourceId }) => {
+        resolved.push({ modelId, resourceId });
+        return `resolved:${modelId}`;
+      },
+    });
+    const requestContext = inACall('company:c1:person:p1');
+
+    expect(await ask(observer, requestContext)).toBe('resolved:observer-of-company:c1:person:p1');
+    expect(await ask(reflector, requestContext)).toBe('resolved:reflector-of-company:c1:person:p1');
+    expect(asked).toEqual([{ resourceId: 'company:c1:person:p1' }, { resourceId: 'company:c1:person:p1' }]);
+    expect(resolved.map((entry) => entry.modelId)).toEqual([
+      'observer-of-company:c1:person:p1',
+      'reflector-of-company:c1:person:p1',
+    ]);
+  });
+
+  it('fails when the call has no owner, instead of picking a model for someone', async () => {
+    const { observer } = memoryModels(noModels);
+
+    await expect(ask(observer, new RequestContext())).rejects.toThrow(/No resourceId/);
   });
 });

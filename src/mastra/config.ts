@@ -22,11 +22,35 @@ export type HarnessTools =
   | ToolsInput
   | ((args: { requestContext: RequestContext }) => ToolsInput | Promise<ToolsInput>);
 
+/** Id do roteador do Mastra ("anthropic/claude-sonnet-5-5") ou apelido do host. Opaco para o pacote. */
+export type ModelId = string;
+
+/** Dono de uma chamada de modelo. O `resourceId` é o que o host deu à sessão (no Hub, `company:<c>:person:<p>`). */
+export interface ModelOwner {
+  readonly resourceId: string;
+}
+
+export interface ConversationOwner extends ModelOwner {
+  readonly sessionId: string;
+}
+
+/** Uma chamada ao modelo: o dono mais o requestContext do turno. Nunca carrega segredo. */
+export interface ModelCall extends ModelOwner {
+  readonly requestContext: RequestContext;
+}
+
+export interface MemoryModels {
+  readonly observer: ModelId;
+  readonly reflector: ModelId;
+}
+
 export interface HarnessModels {
-  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-sonnet-5-5". */
-  builder?: MastraModelConfig;
-  /** Id do gateway ou modelo do AI SDK. Padrão: "anthropic/claude-haiku-5-5". */
-  memory?: MastraModelConfig;
+  /** Modelo de uma conversa nova. Padrão: "anthropic/claude-sonnet-5-5". */
+  defaultFor?: (owner: ConversationOwner) => ModelId | Promise<ModelId>;
+  /** Id para modelo e chave. Lança erro se o id não for permitido. Padrão: o próprio id, que vai ao roteador. */
+  resolve?: (modelId: ModelId, call: ModelCall) => MastraModelConfig | Promise<MastraModelConfig>;
+  /** Modelos da memória do dono. Padrão: "anthropic/claude-haiku-5-5" nos dois. */
+  memoryFor?: (owner: ModelOwner) => MemoryModels | Promise<MemoryModels>;
 }
 
 export interface ConexusHarnessConfig {

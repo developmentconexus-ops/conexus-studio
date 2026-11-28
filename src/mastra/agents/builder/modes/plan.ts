@@ -1,6 +1,5 @@
 import type { AgentControllerMode } from '@mastra/core/agent-controller';
 import { WORKSPACE_TOOLS } from '@mastra/core/workspace';
-import type { MastraModelConfig } from '@mastra/core/llm';
 import { BUILD_MODE_ID } from './build.js';
 
 export const PLAN_MODE_ID = 'plan';
@@ -25,12 +24,11 @@ export const PLAN_MODE_AVAILABLE_TOOLS: string[] = [
   'task_check',
 ];
 
-export function createPlanMode({ model, plansDir }: { model: MastraModelConfig; plansDir: string }): AgentControllerMode {
+export function createPlanMode({ plansDir }: { plansDir: string }): AgentControllerMode {
   return {
     id: PLAN_MODE_ID,
     name: 'Plan',
     description: 'Reads, asks questions and writes the plan. Never writes app code or runs commands.',
-    defaultModelId: typeof model === 'string' ? model : undefined,
     transitionsTo: BUILD_MODE_ID,
     instructions: `You are in PLAN mode.
 
